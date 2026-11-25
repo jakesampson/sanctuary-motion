@@ -29,8 +29,12 @@ pub fn configure(builder: Builder<Wry>) -> Builder<Wry> {
                 return;
             }
             if let Ok(path) = std::env::var("SANCTUARY_SMOKE_DIR") {
-                let path = serde_json::to_string(&path).expect("serialize smoke directory");
-                let script = format!("({})({path});", include_str!("smoke.js"));
+                let options = serde_json::json!({
+                    "dir": path,
+                    "fullDisk": std::env::var("SANCTUARY_SMOKE_FULL_DISK").ok(),
+                    "missingEncoder": std::env::var_os("SANCTUARY_SMOKE_MISSING_ENCODER").is_some(),
+                });
+                let script = format!("({})({options});", include_str!("smoke.js"));
                 if let Err(error) = view.eval(&script) {
                     eprintln!("Could not start smoke test: {error}");
                     view.app_handle().exit(1);

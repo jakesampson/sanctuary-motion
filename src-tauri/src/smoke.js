@@ -1,4 +1,4 @@
-async function runSmoke(dir) {
+async function runSmoke({ dir, fullDisk, missingEncoder }) {
   const invoke = window.__TAURI_INTERNALS__.invoke;
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const checks = [];
@@ -37,6 +37,14 @@ async function runSmoke(dir) {
     await sleep(450);
     const later = sample();
     assert(initial.some((value, index) => later[index] !== value), 'Live preview animated through native IPC');
+    if (missingEncoder) {
+      assert((await errorFrom(exportFile('missing-encoder.mp4'))).includes('bundled video encoder is missing'),
+        'Missing encoder reports an actionable error');
+      await exportFile('recovery.png', { ...scene, width: 640, height: 360 }, 'png');
+      assert(true, 'PNG export still works after encoder failure');
+      ok = true;
+      return;
+    }
     assert(document.documentElement.scrollWidth <= innerWidth + 1, 'Default-width editor fits horizontally');
     await invoke('plugin:event|emit', { event: 'smoke-compact' });
     await waitFor(() => innerWidth <= 590, 'Could not test the compact desktop window.');
@@ -60,6 +68,14 @@ async function runSmoke(dir) {
     assert((await errorFrom(exportFile('odd.mp4', { ...scene, width: 721 }))).includes('requires even'), 'Odd MP4 dimensions reject before encoding');
     assert((await errorFrom(exportFile('landscape.mp4'))).includes('already exists'), 'Existing export protected');
     assert((await errorFrom(exportFile('missing-directory/fail.mp4'))).includes('output folder'), 'Invalid destination reports an error');
+    if (fullDisk) {
+      const attempted = invoke('export_scene', {
+        request: { scene, path: fullDisk + '/disk-full.mp4', format: 'mp4' },
+      });
+      const failure = await errorFrom(attempted);
+      assert(/(encode this video|output folder|space left|disk full)/i.test(failure),
+        'A destination without space causes a controlled export failure');
+    }
     const pending = errorFrom(exportFile('cancelled.mp4', { ...scene, duration: 30 }));
     await sleep(500);
     await invoke('cancel_export');

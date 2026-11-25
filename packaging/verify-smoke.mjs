@@ -10,10 +10,19 @@ mkdirSync(artifacts, { recursive: true });
 const output = mkdtempSync(resolve(artifacts, 'smoke-'));
 const executable = resolve(app);
 const sandbox = process.platform === 'darwin' && process.argv.includes('--deny-network');
+const missingEncoder = process.argv.includes('--missing-encoder');
+const fullDiskPath = process.env.SANCTUARY_SMOKE_FULL_DISK;
 const run = spawnSync(
   sandbox ? '/usr/bin/sandbox-exec' : executable,
   sandbox ? ['-p', '(version 1) (allow default) (deny network-outbound)', executable] : [],
-  { stdio: 'inherit', timeout: 240_000, env: { ...process.env, SANCTUARY_SMOKE_DIR: output } },
+  {
+    stdio: 'inherit', timeout: 240_000,
+    env: {
+      ...process.env,
+      SANCTUARY_SMOKE_DIR: output,
+      ...(missingEncoder ? { SANCTUARY_SMOKE_MISSING_ENCODER: '1' } : {}),
+    },
+  },
 );
 assert.equal(run.status, 0, `Smoke app failed. Results directory: ${output}. ${run.error ?? ''}`);
 assert.equal(JSON.parse(readFileSync(resolve(output, 'smoke-result.json'), 'utf8')).ok, true);
@@ -25,6 +34,19 @@ function probe(file) {
   ], { encoding: 'utf8' }));
   assert.equal(streams.length, 1);
   return streams[0];
+}
+
+if (missingEncoder) {
+  assert.deepEqual(readdirSync(output).sort(), ['recovery.png', 'smoke-result.json']);
+  const still = probe('recovery.png');
+  assert.deepEqual([still.codec_name, still.width, still.height], ['png', 640, 360]);
+  console.log(`Verified encoder failure recovery in ${output}`);
+  process.exit(0);
+}
+
+if (fullDiskPath) {
+  assert(!readdirSync(fullDiskPath).some(name => name === 'disk-full.mp4' || name.startsWith('.sanctuary-')),
+    'An export to a full destination left an incomplete file.');
 }
 
 for (const [name, width, height, frames] of [
