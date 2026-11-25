@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "targets": ["nsis"],
+    "externalBin": ["binaries/sanctuary-encoder"],
+    "windows": { "webviewInstallMode": { "type": "offlineInstaller" } }
+  }
+}

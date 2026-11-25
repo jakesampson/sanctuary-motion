@@ -66,6 +66,7 @@ struct Params {
     colors: [[f32; 4]; 3],
 }
 
+#[derive(Clone)]
 pub struct Renderer {
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -109,7 +110,7 @@ impl Renderer {
         })
     }
 
-    pub fn target(&self, width: u32, height: u32) -> Result<Target<'_>, String> {
+    pub fn target(&self, width: u32, height: u32) -> Result<Target, String> {
         if width == 0 || height == 0 || width > 8192 || height > 8192 {
             return Err("Invalid render dimensions.".into());
         }
@@ -151,7 +152,7 @@ impl Renderer {
             ],
         });
         Ok(Target {
-            renderer: self,
+            renderer: self.clone(),
             width,
             height,
             size,
@@ -163,8 +164,8 @@ impl Renderer {
     }
 }
 
-pub struct Target<'a> {
-    renderer: &'a Renderer,
+pub struct Target {
+    renderer: Renderer,
     width: u32,
     height: u32,
     size: u64,
@@ -174,7 +175,11 @@ pub struct Target<'a> {
     bind: wgpu::BindGroup,
 }
 
-impl Target<'_> {
+impl Target {
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
     pub fn frame(&mut self, scene: &Scene, phase: f32) -> Result<Vec<u8>, String> {
         scene.validate()?;
         if !phase.is_finite() {
@@ -192,7 +197,7 @@ impl Target<'_> {
                 .colors
                 .map(|[r, g, b]| [r as f32 / 255., g as f32 / 255., b as f32 / 255., 1.]),
         };
-        let gpu = self.renderer;
+        let gpu = &self.renderer;
         gpu.queue
             .write_buffer(&self.params, 0, bytemuck::bytes_of(&params));
         let mut commands = gpu.device.create_command_encoder(&Default::default());

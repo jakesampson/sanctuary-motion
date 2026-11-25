@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "File picker permissions for the local desktop editor",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:allow-open", "dialog:allow-save"]
+}

@@ -1,0 +1,18 @@
+[package]
+name = "sanctuary-motion"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+smoke = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+sanctuary-render = { path = ".." }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
