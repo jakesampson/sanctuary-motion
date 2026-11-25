@@ -29,7 +29,7 @@ if (process.platform === 'darwin') {
   execFileSync('cargo', [
     'build', '--locked', '--release', '--target', triple, '--target-dir', target,
     '--manifest-path', join(cargo, 'Cargo.toml'),
-  ], { stdio: 'inherit' });
+  ], { cwd: cargo, stdio: 'inherit' });
   copyFileSync(join(target, triple, 'release', 'sanctuary-encoder.exe'),
     join(folder, `sanctuary-encoder-${triple}.exe`));
 }

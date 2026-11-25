@@ -14,5 +14,12 @@ Run started November 26, 2026 at 09:10 AEST. Hard stop at 14:10 AEST.
 - Preview and exports share the native Rust/WGSL renderer. The full editor was informed by the supplied Altar Loops Studio screenshot and uses its own layout, artwork and controls.
 - `cargo run --offline --release --example spike` passed with six distinct moving look samples across HD, ultrawide and portrait aspect ratios. The repeat timing run coincided with desktop compilation.
 - `npm run build` passed the TypeScript and frontend build. The macOS AVFoundation helper was compiled and independently produced 30-frame H.264 files at 1920×1080, 3840×960, 1080×1920 and 3840×2160, verified with `ffprobe`.
-- The Windows Media Foundation helper passed `cargo check --locked --manifest-path packaging/windows-encoder/Cargo.toml --target x86_64-pc-windows-msvc` on the Mac. This is a type check only.
-- Beta gate remains open. Next run the packaged desktop smoke test with outbound network denied, confirm clean cancellation and decoded loop timing, and build the release bundle. Windows runtime, playback in ProPresenter/OBS, clean-machine installation and physical display checks remain outstanding. ProRes and live output remain future work.
+- The Windows Media Foundation helper uses a static MSVC runtime. `cargo check --offline --locked --target x86_64-pc-windows-msvc` from `packaging/windows-encoder` passed on the Mac with the final compiler flags. This is a type check only.
+
+## Packaged Intel Mac verification
+
+- `npm run desktop -- build --debug --bundles app --features smoke` produced a bundle containing its native H.264 helper. On macOS 13.7.8, `node packaging/verify-smoke.mjs 'src-tauri/target/debug/bundle/macos/Sanctuary Motion.app/Contents/MacOS/sanctuary-motion' --deny-network` passed.
+- The native webview animated the preview and painted all six thumbnails. The default and 580-pixel layouts fit horizontally. The WKWebView did not expose WebGPU on this Mac.
+- The desktop IPC test saved and reopened an edited project, exported exact-size 1920×1080, 3840×960 and 1080×1920 H.264 files, exported a 721×1281 PNG, and rejected unsupported MP4 dimensions, a duplicate filename and a missing destination folder. Cancelling left no output or staging directory and the next export succeeded.
+- FFprobe checked frame rate, dimensions, H.264 format and frame counts. The default loop decoded to 450 frames at 30 fps. Its decoded seam delta was 0.270 grayscale levels versus 0.296 for the 95th percentile of adjacent frames inside the loop.
+- Next checkpoint: verify the optimized package, then archive a clean local candidate. Windows and Apple Silicon runtime, playback in ProPresenter/OBS, low-disk recovery, clean-machine installation and physical display checks remain outstanding. ProRes and live output remain future work.
