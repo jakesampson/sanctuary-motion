@@ -24,4 +24,11 @@ Run started November 26, 2026 at 09:10 AEST. Hard stop at 14:10 AEST.
 - FFprobe checked frame rate, dimensions, H.264 format and frame counts. The default loop decoded to 450 frames at 30 fps. Its decoded seam delta was 0.270 grayscale levels versus 0.296 for the 95th percentile of adjacent frames inside the loop.
 - The same smoke workflow passed with `SANCTUARY_SMOKE_FULL_DISK` pointing to a disposable 16 MiB HFS+ image with 256 KiB free. The window handled the write error and the full destination had no output or staging directory after failure.
 - `node packaging/verify-smoke.mjs '<test copy>/Contents/MacOS/sanctuary-motion' --deny-network --missing-encoder` passed with the bundled helper moved out of the test copy. Video export returned an actionable error and PNG export remained usable.
-- Next checkpoint: verify the optimized package, then archive a clean local candidate. Windows and Apple Silicon runtime, playback in ProPresenter/OBS, clean-machine installation and physical display checks remain outstanding. ProRes and live output remain future work.
+- The same offline smoke test passed against the optimized `--features smoke` macOS bundle. The default loop again measured an encoded seam delta of 0.270 versus 0.296 for the adjacent-frame 95th percentile.
+
+## Local beta candidate
+
+- Built the normal optimized Intel app with `CARGO_NET_OFFLINE=true APPLE_SIGNING_IDENTITY=- npm run desktop -- build --bundles app`. It is ad-hoc signed for local testing. A notarized distribution remains outstanding.
+- Local ZIP: `artifacts/Sanctuary-Motion-0.1.0-macOS-Intel.zip`. Extracted the archive and ran `codesign --verify --strict --deep` on the extracted bundle. Both the app and the bundled encoder were present as x86_64 executables. SHA-256: `927d7bb13bc80023f1ce36d2e1821870f4b530d8de5b00557a899176e2cd6f90`.
+- The verified Intel Mac candidate is ready for local hands-on testing. This run stopped at the hardware-dependent beta gates listed below.
+- Windows and Apple Silicon runtime, playback in ProPresenter/OBS, clean-machine installation and physical display checks remain outstanding. ProRes and live output remain future work.
