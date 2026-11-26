@@ -62,7 +62,10 @@ fn main() -> Result<(), String> {
     let mut target = renderer.target(384, 216)?;
     let mut finishes = Vec::new();
     for finish in 0..sanctuary_render::FINISH_COUNT {
-        let scene = Scene { finish, ..scene };
+        let scene = Scene {
+            finish,
+            ..scene.clone()
+        };
         let first = target.frame(&scene, 0.0)?;
         assert_eq!(
             first,
@@ -79,7 +82,7 @@ fn main() -> Result<(), String> {
         "All {} finishes distinct and loop-safe",
         sanctuary_render::FINISH_COUNT
     );
-    let mut styled = scene;
+    let mut styled = scene.clone();
     styled.color.mode = 1;
     assert_ne!(target.frame(&scene, 0.0)?, target.frame(&styled, 0.0)?);
     styled.color.amount = 0.0;
@@ -96,5 +99,20 @@ fn main() -> Result<(), String> {
     assert_eq!(target.frame(&styled, 0.0)?, target.frame(&styled, 0.001)?);
     assert_eq!(target.frame(&styled, 0.0)?, target.frame(&styled, 1.0)?);
     println!("Color modes, eased timing and held frames passed");
+    let mut text_scene = scene.clone();
+    text_scene.text.enabled = true;
+    text_scene.text.content = "Holy\nPrince of Peace\nLumière".into();
+    let plain = target.frame(&scene, 0.0)?;
+    for treatment in 0..46 {
+        text_scene.text.treatment = treatment;
+        let rendered = target.frame(&text_scene, 0.0)?;
+        assert_ne!(plain, rendered, "text treatment {treatment} did not render");
+        assert_eq!(rendered, target.frame(&text_scene, 1.0)?);
+    }
+    for mode in 1..4 {
+        text_scene.text.mode = mode;
+        assert_ne!(plain, target.frame(&text_scene, 0.0)?);
+    }
+    println!("All text treatments and layout modes rendered");
     Ok(())
 }

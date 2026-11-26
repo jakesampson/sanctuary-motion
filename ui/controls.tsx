@@ -68,7 +68,7 @@ function readPalettes(): Ramp[] {
   } catch { return []; }
 }
 
-function ColorField({ name, value, onChange }: { name: string; value: RGB; onChange: (value: RGB) => void }) {
+export function ColorField({ name, value, onChange }: { name: string; value: RGB; onChange: (value: RGB) => void }) {
   const current = hex(value);
   function commit(input: HTMLInputElement) {
     const candidate = '#' + input.value.trim().replace(/^#/, '');
@@ -92,7 +92,7 @@ function RampChoices({ entries, active, select }: { entries: [string, Ramp][]; a
   </div>;
 }
 
-function RangeControl({ name, value, min, max, step = 1, label, onChange }: {
+export function RangeControl({ name, value, min, max, step = 1, label, onChange }: {
   name: string; value: number; min: number; max: number; step?: number; label: string; onChange: (value: number) => void;
 }) {
   return <label className="range-control">
@@ -102,7 +102,7 @@ function RangeControl({ name, value, min, max, step = 1, label, onChange }: {
   </label>;
 }
 
-const percent = (value: number) => Math.round(value * 100) + '%';
+export const percent = (value: number) => Math.round(value * 100) + '%';
 
 export function ColorPanel({ colors, color, onChange }: {
   colors: Palette; color: ColorSettings; onChange: (colors: Palette, color: ColorSettings) => void;

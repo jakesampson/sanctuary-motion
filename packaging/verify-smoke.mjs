@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const app = process.argv[2];
@@ -12,6 +12,15 @@ const executable = resolve(app);
 const sandbox = process.platform === 'darwin' && process.argv.includes('--deny-network');
 const missingEncoder = process.argv.includes('--missing-encoder');
 const fullDiskPath = process.env.SANCTUARY_SMOKE_FULL_DISK;
+if (!missingEncoder) {
+  writeFileSync(resolve(output, 'legacy.sanctuary'), JSON.stringify({
+    version: 1, look: 1, seed: 1, motion: 1, intensity: 0.75,
+    colors: [[8, 12, 27], [39, 96, 132], [116, 225, 186]],
+    width: 1920, height: 1080, fps: 30, duration: 15,
+  }));
+  writeFileSync(resolve(output, 'overlay.svg'),
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" rx="20" fill="#ff1060" fill-opacity=".6"/></svg>');
+}
 const run = spawnSync(
   sandbox ? '/usr/bin/sandbox-exec' : executable,
   sandbox ? ['-p', '(version 1) (allow default) (deny network-outbound)', executable] : [],
@@ -59,6 +68,11 @@ for (const [name, width, height, frames] of [
 }
 const still = probe('odd.png');
 assert.deepEqual([still.codec_name, still.width, still.height], ['png', 721, 1281]);
+for (const name of ['text.png', 'overlay.png']) {
+  const rendered = probe(name);
+  assert.deepEqual([rendered.codec_name, rendered.width, rendered.height], ['png', 640, 360]);
+}
+assert.notDeepEqual(readFileSync(resolve(output, 'text.png')), readFileSync(resolve(output, 'overlay.png')));
 assert(!readdirSync(output).some(name => name === 'cancelled.mp4' || name.startsWith('.sanctuary-')),
   'A cancelled export left an incomplete file.');
 

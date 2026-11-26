@@ -7,6 +7,7 @@ import './style.css';
 import { catalog, looks } from './looks';
 import { finishes } from './finishes';
 import { ColorPanel, MotionPanel, initialColor, initialAnimation, type RGB, type ColorSettings, type AnimationSettings } from './controls';
+import { TextPanel, initialText, type TextSettings } from './text';
 
 type Palette = [RGB, RGB, RGB];
 type Scene = {
@@ -15,6 +16,7 @@ type Scene = {
   finish: number;
   color: ColorSettings;
   animation: AnimationSettings;
+  text: TextSettings;
   seed: number;
   motion: number;
   intensity: number;
@@ -37,11 +39,12 @@ const screens = [
   ['4K · 16:9', 3840, 2160],
   ['Cinema · 21:9', 2520, 1080],
   ['Ultrawide · 32:9', 3840, 1080],
+  ['Triple wide · 48:9', 5760, 1080],
   ['Portrait · 9:16', 1080, 1920],
   ['Square · 1:1', 1080, 1080],
 ] as const;
 const initial: Scene = {
-  version: 1, look: 0, finish: 0, color: initialColor, animation: initialAnimation,
+  version: 1, look: 0, finish: 0, color: initialColor, animation: initialAnimation, text: initialText,
   seed: 1, motion: 1, intensity: 0.75,
   colors: thumbnailPalettes[0].colors, width: 1920, height: 1080, fps: 30, duration: 15,
 };
@@ -111,24 +114,38 @@ function EffectGallery({ surface, selected, onSelect }: {
   </div>;
 }
 
-function Preview({ scene, lyrics, playing }: { scene: Scene; lyrics: boolean; playing: boolean }) {
+function Preview({ scene, lyrics, playing, textPlaying, textReset, overlayFit, overlayRevision }: {
+  scene: Scene; lyrics: boolean; playing: boolean; textPlaying: boolean; textReset: number;
+  overlayFit: boolean | null; overlayRevision: number;
+}) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const surface = useRef<HTMLDivElement>(null);
-  const job = useRef({ scene, playing });
+  const job = useRef({ scene, playing, textPlaying, textReset, overlayFit, overlayRevision });
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
-  useEffect(() => { job.current = { scene, playing }; }, [scene, playing]);
+  useEffect(() => {
+    job.current = { scene, playing, textPlaying, textReset, overlayFit, overlayRevision };
+  }, [scene, playing, textPlaying, textReset, overlayFit, overlayRevision]);
   useEffect(() => {
     let stopped = false;
     let timer = 0;
     let phase = 0;
+    let textPhase = 0;
+    let lastTextReset = 0;
     let last = performance.now();
     let drawn: Scene | undefined;
     let drawnSize = '';
+    let drawnOverlay = -1;
+    let drawnFit: boolean | null = null;
     async function tick() {
-      const { scene, playing } = job.current;
+      const { scene, playing, textPlaying, textReset, overlayFit, overlayRevision } = job.current;
       const now = performance.now();
-      if (playing) phase = (phase + (now - last) / (scene.duration * 1000)) % 1;
+      const elapsed = (now - last) / (scene.duration * 1000);
+      if (playing) phase = (phase + elapsed) % 1;
+      const textChanged = lastTextReset !== textReset;
+      if (textChanged) textPhase = 0;
+      else if (playing && textPlaying) textPhase = (textPhase + elapsed) % 1;
+      lastTextReset = textReset;
       last = now;
       const ratio = scene.width / scene.height;
       const box = surface.current?.getBoundingClientRect();
@@ -136,13 +153,15 @@ function Preview({ scene, lyrics, playing }: { scene: Scene; lyrics: boolean; pl
       const height = Math.max(1, Math.round(Math.min(800, width / ratio)));
       const renderWidth = Math.max(1, Math.round(Math.min(width, height * ratio)));
       const size = `${renderWidth}x${height}`;
-      if (playing || scene !== drawn || size !== drawnSize) {
+      if (playing || textChanged || scene !== drawn || size !== drawnSize || overlayRevision !== drawnOverlay || overlayFit !== drawnFit) {
         try {
-          const bytes = await invoke<ArrayBuffer>('preview_frame', { scene, phase, width: renderWidth, height });
+          const bytes = await invoke<ArrayBuffer>('preview_frame', { scene, phase, textPhase, overlayFit, width: renderWidth, height });
           if (stopped) return;
           if (canvas.current) draw(canvas.current, bytes, renderWidth, height);
           drawn = scene;
           drawnSize = size;
+          drawnOverlay = overlayRevision;
+          drawnFit = overlayFit;
         } catch (cause) {
           if (!stopped) setError(String(cause));
           return;
@@ -193,6 +212,14 @@ function App() {
   const [step, setStep] = useState(0);
   const [lyrics, setLyrics] = useState(false);
   const [playing, setPlaying] = useState(true);
+  const [textPlaying, setTextPlaying] = useState(true);
+  const [textReset, setTextReset] = useState(0);
+  const [overlayName, setOverlayName] = useState('');
+  const [overlayFit, setOverlayFit] = useState(false);
+  const [overlayRevision, setOverlayRevision] = useState(0);
+  const [overlayBusy, setOverlayBusy] = useState(false);
+  const [includeText, setIncludeText] = useState(false);
+  const [includeOverlay, setIncludeOverlay] = useState(false);
   const [custom, setCustom] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -218,6 +245,8 @@ function App() {
       if (!path) return;
       const loaded = await invoke<Scene>('open_project', { path });
       setScene(loaded);
+      setTextReset(value => value + 1);
+      setIncludeText(false);
       setCustom(!screens.some(([, w, h]) => loaded.width === w && loaded.height === h));
       setName(filename(path).replace(/\.sanctuary$/i, ''));
       setNotice('Project opened.');
@@ -251,12 +280,40 @@ function App() {
       });
       if (!path) return;
       dialog.current?.close();
-      await invoke('export_scene', { request: { scene: current, path, format } });
+      await invoke('export_scene', { request: {
+        scene: { ...current, text: { ...current.text, enabled: current.text.enabled && includeText } },
+        path, format, overlayFit: overlayName && includeOverlay ? overlayFit : null,
+      } });
       setNotice(`Exported ${filename(path)}.`);
     } catch (cause) {
       if (String(cause) === 'Export cancelled.') setNotice('Export cancelled.');
       else setError(String(cause));
     } finally { setBusy(false); setCancelling(false); }
+  }
+
+  async function chooseOverlay() {
+    setOverlayBusy(true);
+    setError('');
+    try {
+      const path = await open({ multiple: false, directory: false, filters: [{ name: 'Overlay image', extensions: ['png', 'jpg', 'jpeg', 'svg'] }] });
+      if (!path) return;
+      await invoke('select_overlay', { path });
+      setOverlayName(filename(path));
+      setOverlayRevision(value => value + 1);
+    } catch (cause) { setError(String(cause)); }
+    finally { setOverlayBusy(false); }
+  }
+
+  async function removeOverlay() {
+    setOverlayBusy(true);
+    setError('');
+    try {
+      await invoke('clear_overlay');
+      setOverlayName('');
+      setIncludeOverlay(false);
+      setOverlayRevision(value => value + 1);
+    } catch (cause) { setError(String(cause)); }
+    finally { setOverlayBusy(false); }
   }
 
   function chooseScreen(value: string) {
@@ -280,7 +337,8 @@ function App() {
       <section className="studio" aria-label="Preview and looks">
         <div className="card stage">
           <div className="card-heading"><h2>Preview</h2><span className="size">{scene.width} × {scene.height}</span></div>
-          <Preview scene={scene} lyrics={lyrics} playing={playing} />
+          <Preview scene={scene} lyrics={lyrics} playing={playing} textPlaying={textPlaying} textReset={textReset}
+            overlayFit={overlayName ? overlayFit : null} overlayRevision={overlayRevision} />
           <div className="transport">
             <button onClick={() => setPlaying(!playing)}>{playing ? 'Pause' : 'Play'}</button>
             <label className="toggle"><input type="checkbox" checked={lyrics} onChange={event => setLyrics(event.target.checked)} /> Preview lyrics</label>
@@ -288,7 +346,7 @@ function App() {
         </div>
         <section className="card editor" aria-label="Background editor">
           <nav className="editor-steps" aria-label="Editor steps">
-            {['Look', 'Finish', 'Color', 'Motion'].map((label, index) =>
+            {['Look', 'Finish', 'Color', 'Motion', 'Text', 'Screen'].map((label, index) =>
               <button key={label} aria-current={step === index ? 'step' : undefined} onClick={() => setStep(index)}>
                 <span aria-hidden="true">{index + 1}.</span> {label}
               </button>)}
@@ -300,21 +358,41 @@ function App() {
           {step === 3 && <MotionPanel animation={scene.animation} duration={scene.duration} motion={scene.motion}
             onAnimation={value => update('animation', value)} onDuration={value => update('duration', value)}
             onMotion={value => update('motion', value)} />}
-          {step < 3 && <div className="step-footer">
-            <button onClick={() => setStep(step + 1)}>Continue to {['Finish', 'Color', 'Motion'][step]}</button>
+          {step === 4 && <TextPanel text={scene.text} onChange={value => update('text', value)} playing={textPlaying}
+            onPlayback={() => setTextPlaying(value => !value)} onRestart={() => setTextReset(value => value + 1)} />}
+          {step === 5 && <div className="step-content">
+            <div className="card-heading"><h2>Screen and export</h2></div>
+            <label className="field">Screen size
+              <select value={custom || screen < 0 ? 'custom' : String(screen)} onChange={event => chooseScreen(event.target.value)}>
+                {screens.map(([label, width, height], index) => <option key={label} value={index}>{label} · {width} × {height}</option>)}
+                <option value="custom">Custom size</option>
+              </select>
+            </label>
+            {(custom || screen < 0) && <CustomSize key={`${scene.width}x${scene.height}`} width={scene.width} height={scene.height}
+              onApply={(width, height) => setScene(prev => ({ ...prev, width, height }))} />}
+            <fieldset><legend>Image overlay</legend>
+              <div className="editor-actions">
+                <button disabled={overlayBusy} onClick={chooseOverlay}>Choose image</button>
+                {overlayName && <button disabled={overlayBusy} onClick={removeOverlay}>Remove</button>}
+              </div>
+              <p className="gallery-status overlay-name">{overlayName || 'PNG, JPEG or vector SVG. This image is kept for this session.'}</p>
+              {overlayName && <div className="editor-actions">
+                <button aria-pressed={!overlayFit} onClick={() => setOverlayFit(false)}>Fill</button>
+                <button aria-pressed={overlayFit} onClick={() => setOverlayFit(true)}>Fit</button>
+              </div>}
+            </fieldset>
+            <div className="editor-actions">
+              <button className="primary" disabled={busy || overlayBusy}
+                onClick={() => { if (odd) setFormat('png'); dialog.current?.showModal(); }}>Export background</button>
+            </div>
+          </div>}
+          {step < 5 && <div className="step-footer">
+            <button onClick={() => setStep(step + 1)}>Continue to {['Finish', 'Color', 'Motion', 'Text', 'Screen'][step]}</button>
           </div>}
         </section>
       </section>
       <aside className="card inspector" aria-label="Background settings">
         <div className="card-heading"><h2>Settings</h2></div>
-        <label className="field">Screen
-          <select value={custom || screen < 0 ? 'custom' : String(screen)} onChange={event => chooseScreen(event.target.value)}>
-            {screens.map(([label, width, height], index) => <option key={label} value={index}>{label} · {width} × {height}</option>)}
-            <option value="custom">Custom size</option>
-          </select>
-        </label>
-        {(custom || screen < 0) && <CustomSize key={`${scene.width}x${scene.height}`} width={scene.width} height={scene.height}
-          onApply={(width, height) => setScene(prev => ({ ...prev, width, height }))} />}
         <details><summary>Fine tune</summary>
           <label className="field">Intensity <input type="range" min="0" max="1" step="0.01" value={scene.intensity}
             onChange={event => update('intensity', event.target.valueAsNumber)} /></label>
@@ -329,7 +407,7 @@ function App() {
               setCancelling(true);
               try { await invoke('cancel_export'); } catch (cause) { setError(String(cause)); setCancelling(false); }
             }}>{cancelling ? 'Cancelling…' : 'Cancel export'}</button>
-          </> : <button className="primary" onClick={() => { if (odd) setFormat('png'); dialog.current?.showModal(); }}>Export background</button>}
+          </> : <button onClick={() => setStep(5)}>Screen and export</button>}
         </div>
       </aside>
     </main>
@@ -342,6 +420,12 @@ function App() {
         </select>
       </label>
       {odd && <p>MP4 needs even pixel dimensions. PNG preserves this size.</p>}
+      {scene.text.enabled && scene.text.content.trim() && <label className="toggle">
+        <input type="checkbox" checked={includeText} onChange={event => setIncludeText(event.target.checked)} /> Include text layer
+      </label>}
+      {overlayName && <label className="toggle">
+        <input type="checkbox" checked={includeOverlay} onChange={event => setIncludeOverlay(event.target.checked)} /> Include image overlay
+      </label>}
       {format === 'mp4' && <div className="dimensions">
         <label className="field">Duration<select disabled={busy} value={scene.duration} onChange={event => update('duration', Number(event.target.value))}>
           {Array.from(new Set([10, 15, 30, 60, scene.duration])).sort((a, b) => a - b).map(value => <option key={value} value={value}>{value} seconds</option>)}

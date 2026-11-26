@@ -12,11 +12,11 @@ async function runSmoke({ dir, fullDisk, missingEncoder }) {
     width: 1920, height: 1080, fps: 30, duration: 1,
   };
   const file = name => dir + '/' + name;
-  const exportFile = (name, settings = scene, format = 'mp4') =>
-    invoke('export_scene', { request: { scene: settings, path: file(name), format } });
+  const exportFile = (name, settings = scene, format = 'mp4', overlayFit = null) =>
+    invoke('export_scene', { request: { scene: settings, path: file(name), format, overlayFit } });
   const errorFrom = promise => promise.then(() => '', error => String(error));
   const waitFor = async (predicate, message) => {
-    for (let attempt = 0; attempt < 100; attempt++) {
+    for (let attempt = 0; attempt < 300; attempt++) {
       if (predicate()) return;
       await sleep(100);
     }
@@ -28,6 +28,7 @@ async function runSmoke({ dir, fullDisk, missingEncoder }) {
   try {
     await waitFor(() => painted(document.querySelector('.preview-surface canvas')), 'Main canvas was never painted.');
     assert(document.querySelector('h1').textContent === 'Sanctuary Motion', 'Desktop editor loaded in the native webview');
+    assert(document.querySelectorAll('.editor-steps button').length === 6, 'All six editor steps available');
     await waitFor(() => [...document.querySelectorAll('.look canvas')].length === 12 &&
       [...document.querySelectorAll('.look canvas')].every(painted), 'Preset thumbnails were not painted.');
     assert(true, 'First page of procedural thumbnails painted');
@@ -50,17 +51,40 @@ async function runSmoke({ dir, fullDisk, missingEncoder }) {
     await waitFor(() => innerWidth <= 590, 'Could not test the compact desktop window.');
     assert(document.documentElement.scrollWidth <= innerWidth + 1, 'Compact-width editor fits horizontally');
 
-    const edited = { ...scene, look: 68, seed: 12, motion: 2, width: 3840, height: 960 };
+    const legacy = await invoke('open_project', { path: file('legacy.sanctuary') });
+    assert(legacy.look === 1 && legacy.finish === 0 && legacy.color.mode === 0 &&
+      legacy.animation.cycles === 1 && !legacy.text.enabled, 'Legacy projects default to their original appearance');
+    const edited = {
+      ...scene, look: 68, finish: 6, seed: 12, motion: 2, width: 3840, height: 960,
+      color: { ...legacy.color, mode: 2, layout: 1 },
+      animation: { ...legacy.animation, cycles: 2, ease: 0.35, stopFps: 12 },
+      text: { ...legacy.text, enabled: true, content: 'Holy\nPrince of Peace', treatment: 9 },
+    };
     const path = file('ultrawide.sanctuary');
     await invoke('save_project', { path, scene: edited });
     const reopened = await invoke('open_project', { path });
     assert(Object.keys(edited).every(key => JSON.stringify(reopened[key]) === JSON.stringify(edited[key])), 'Edited project saves and reopens exactly');
     assert((await errorFrom(invoke('open_project', { path: file('absent.sanctuary') }))).length > 0, 'Missing project reports an error');
+    const settings = { ...edited, width: 640, height: 360, text: { ...edited.text, treatment: 0 } };
+    const previewOf = async (settings, overlayFit = null) => new Uint8Array(await invoke('preview_frame', {
+      scene: settings, phase: 0.0, width: 320, height: 180, overlayFit,
+    }));
+    const different = (a, b) => a.some((value, index) => value !== b[index]);
+    const background = await previewOf({ ...settings, text: { ...settings.text, enabled: false } });
+    const textOnly = await previewOf(settings);
+    assert(different(background, textOnly), 'Native text paints over the scene');
+    await invoke('select_overlay', { path: file('overlay.svg') });
+    assert(different(textOnly, await previewOf(settings, true)), 'Local SVG overlay appears in preview');
+    assert(different(await previewOf(settings, true), await previewOf(settings, false)), 'Overlay Fit and Fill render differently');
+    await exportFile('text.png', settings, 'png');
+    await exportFile('overlay.png', settings, 'png', true);
+    assert(true, 'Text and image overlay exported together');
     for (const [name, width, height] of [['landscape', 1920, 1080], ['ultrawide', 3840, 960], ['portrait', 1080, 1920]]) {
-      const settings = { ...scene, look: name === 'ultrawide' ? edited.look : scene.look, width, height };
-      await exportFile(name + '.mp4', settings);
+      const isWide = name === 'ultrawide';
+      await exportFile(name + '.mp4', { ...(isWide ? edited : scene), width, height }, 'mp4', isWide ? true : null);
       assert(true, name + ' MP4 export completed');
     }
+    await invoke('clear_overlay');
     await exportFile('default-loop.mp4', { ...scene, duration: 15 });
     assert(true, 'Default 15-second landscape loop exported');
     await exportFile('odd.png', { ...scene, width: 721, height: 1281 }, 'png');

@@ -12,6 +12,12 @@ struct Params {
     glow: vec4f,
     gradient: array<vec4f, 4>,
     framing: vec4f,
+    text_style: vec4u,
+    text_flags: vec4u,
+    text_layout: vec4f,
+    text_shape: vec4f,
+    text_color: vec4f,
+    text_accent: vec4f,
 }
 
 @group(0) @binding(0) var<uniform> settings: Params;
@@ -148,7 +154,7 @@ fn color_mode(color: vec3f, uv: vec2f) -> vec3f {
 fn render(@builtin(global_invocation_id) id: vec3u) {
     if (any(id.xy >= settings.size)) { return; }
     let uv = (vec2f(id.xy)+0.5)/vec2f(settings.size);
-    let color = color_mode(finish_color(uv, settings.surface.x),uv);
+    let color = text_layer(color_mode(finish_color(uv, settings.surface.x),uv),uv);
     let dither = (hash(vec2f(id.xy))-0.5)/255.0;
     pixels[id.y*settings.size.x+id.x] = pack4x8unorm(vec4f(clamp(color+dither,vec3f(0),vec3f(1)),1));
 }

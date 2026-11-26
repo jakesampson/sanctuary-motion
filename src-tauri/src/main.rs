@@ -3,14 +3,53 @@
 mod export;
 
 use export::{ExportRequest, ExportState};
-use sanctuary_render::{Renderer, Scene, Target};
-use std::{fs, path::PathBuf, sync::Mutex};
+use sanctuary_render::{Overlay, Renderer, Scene, Target};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 use tauri::{ipc::Response, AppHandle, Manager, State};
 
 #[derive(Default)]
 struct Graphics {
     renderer: Mutex<Option<Renderer>>,
     preview: Mutex<Option<Target>>,
+}
+
+#[derive(Default)]
+struct ScreenOverlay(Mutex<Option<Arc<Overlay>>>);
+
+impl ScreenOverlay {
+    fn current(&self, fit: Option<bool>) -> Result<Option<(Arc<Overlay>, bool)>, String> {
+        match fit {
+            None => Ok(None),
+            Some(fit) => Ok(self
+                .0
+                .lock()
+                .map_err(|error| error.to_string())?
+                .clone()
+                .map(|source| (source, fit))),
+        }
+    }
+}
+
+#[tauri::command]
+async fn select_overlay(app: AppHandle, path: PathBuf) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let image = Overlay::load(&path)?;
+        let state = app.state::<ScreenOverlay>();
+        *state.0.lock().map_err(|error| error.to_string())? = Some(Arc::new(image));
+        Ok(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn clear_overlay(state: State<'_, ScreenOverlay>) -> Result<(), String> {
+    *state.0.lock().map_err(|error| error.to_string())? = None;
+    Ok(())
 }
 
 impl Graphics {
@@ -28,6 +67,8 @@ async fn preview_frame(
     app: AppHandle,
     scene: Scene,
     phase: f32,
+    text_phase: Option<f32>,
+    overlay_fit: Option<bool>,
     width: u32,
     height: u32,
 ) -> Result<Response, String> {
@@ -46,10 +87,9 @@ async fn preview_frame(
         if slot.as_ref().map(Target::dimensions) != Some((width, height)) {
             *slot = Some(renderer.target(width, height)?);
         }
-        let pixels = slot
-            .as_mut()
-            .expect("initialized preview")
-            .frame(&scene, phase)?;
+        let target = slot.as_mut().expect("initialized preview");
+        target.set_overlay(app.state::<ScreenOverlay>().current(overlay_fit)?);
+        let pixels = target.frame_with_text_phase(&scene, phase, text_phase.unwrap_or(phase))?;
         Ok(Response::new(pixels))
     })
     .await
@@ -93,7 +133,11 @@ async fn export_scene(app: AppHandle, request: ExportRequest) -> Result<(), Stri
         let state = app.state::<ExportState>();
         let job = state.start()?;
         let graphics = app.state::<Graphics>();
-        export::run(&app, &graphics.get()?, &job, request)
+        let overlay = app.state::<ScreenOverlay>().current(request.overlay_fit)?;
+        if request.overlay_fit.is_some() && overlay.is_none() {
+            return Err("Choose an overlay before including it in the export.".into());
+        }
+        export::run(&app, &graphics.get()?, &job, request, overlay)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -108,6 +152,7 @@ fn main() {
     let builder = tauri::Builder::default()
         .manage(Graphics::default())
         .manage(ExportState::default())
+        .manage(ScreenOverlay::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             preview_frame,
@@ -115,6 +160,8 @@ fn main() {
             save_project,
             export_scene,
             cancel_export,
+            select_overlay,
+            clear_overlay,
         ]);
     #[cfg(feature = "smoke")]
     let builder = smoke::configure(builder);

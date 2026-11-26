@@ -5,7 +5,10 @@ edition = "2021"
 
 [dependencies]
 bytemuck = { version = "1", features = ["derive"] }
+cosmic-text = "0.19"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 pollster = "0.4"
 png = "0.17"
+resvg = { version = "0.46", default-features = false }
 serde = { version = "1", features = ["derive"] }
 wgpu = "24"

@@ -2,12 +2,16 @@
 
 ## FX library and editor workflow in progress
 
-- The library now has 82 catalog entries with stable numeric IDs. The native renderer spike confirmed distinct animated outputs for landscape and ultrawide before the Finish work began.
+- Commit `276b23b` introduced 82 built-in looks with stable IDs and 47 surface finishes. The renderer spike passed for all looks in landscape, ultrawide and portrait, all finishes, color modes, and motion timing.
 - Steps 2–4 are wired to preview, saved scenes and native exports. Finish has 47 treatments, Color has Palette, Tint and Gradient Map, and Motion has whole-cycle speed, framing, stop motion and easing.
-- In progress: step 5 Text, with native text compositing for optional export. The original sample lyric guide remains preview-only.
-- Next: check legacy project loading and run the renderer and offline packaged smoke suites after the Text integration.
+- Steps 5 and 6 are implemented and in verification. Text has native glyph compositing, and Screen has size presets, exact dimensions, and a session-local PNG/JPEG/vector SVG overlay. Text and overlay are opt-in at export. The sample lyric guide remains preview-only.
+- Reference screenshots are in the Codex project's local `design-references/` directory, outside this checkout.
+- `cargo check --manifest-path src-tauri/Cargo.toml` and the TypeScript/Vite build passed with the Text and Screen integration.
+- Next: finish the running renderer spike and debug desktop build, then run `node packaging/verify-smoke.mjs 'src-tauri/target/debug/bundle/macos/Sanctuary Motion.app/Contents/MacOS/sanctuary-motion' --deny-network`. Check text and overlay together in PNG and MP4, verify legacy defaults, and record the next platform checks.
 
-Run started November 26, 2026 at 09:10 AEST. Hard stop at 14:10 AEST.
+## Original beta run
+
+The original beta run started November 26, 2026 at 09:10 AEST.
 
 ## Native rendering spike
 

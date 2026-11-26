@@ -5,8 +5,12 @@ use wgpu::util::DeviceExt;
 
 pub const LOOK_COUNT: u32 = 82;
 pub const FINISH_COUNT: u32 = 47;
+mod overlay;
+mod text;
+pub use overlay::Overlay;
+pub use text::TextSettings;
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Scene {
     pub version: u32,
@@ -17,6 +21,8 @@ pub struct Scene {
     pub color: ColorSettings,
     #[serde(default)]
     pub animation: AnimationSettings,
+    #[serde(default)]
+    pub text: TextSettings,
     pub seed: u32,
     pub motion: u32,
     pub intensity: f32,
@@ -103,6 +109,7 @@ impl Default for Scene {
             finish: 0,
             color: ColorSettings::default(),
             animation: AnimationSettings::default(),
+            text: TextSettings::default(),
             seed: 1,
             motion: 1,
             intensity: 0.75,
@@ -117,6 +124,7 @@ impl Default for Scene {
 
 impl Scene {
     pub fn validate(&self) -> Result<(), String> {
+        self.text.validate()?;
         if self.version != 1
             || self.look >= LOOK_COUNT
             || self.finish >= FINISH_COUNT
@@ -160,6 +168,12 @@ struct Params {
     glow: [f32; 4],
     gradient: [[f32; 4]; 4],
     framing: [f32; 4],
+    text_style: [u32; 4],
+    text_flags: [u32; 4],
+    text_layout: [f32; 4],
+    text_shape: [f32; 4],
+    text_color: [f32; 4],
+    text_accent: [f32; 4],
 }
 
 #[derive(Clone)]
@@ -194,7 +208,9 @@ impl Renderer {
                     "\n",
                     include_str!("library.wgsl"),
                     "\n",
-                    include_str!("finishes.wgsl")
+                    include_str!("finishes.wgsl"),
+                    "\n",
+                    include_str!("text.wgsl")
                 )
                 .into(),
             ),
@@ -242,6 +258,12 @@ impl Renderer {
                 contents: bytemuck::bytes_of(&Params::zeroed()),
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             });
+        let atlas = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Text alpha atlas"),
+            size: text::BUFFER_BYTES,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &self.pipeline.get_bind_group_layout(0),
@@ -254,6 +276,10 @@ impl Renderer {
                     binding: 1,
                     resource: output.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: atlas.as_entire_binding(),
+                },
             ],
         });
         Ok(Target {
@@ -265,6 +291,10 @@ impl Renderer {
             output,
             readback,
             bind,
+            atlas,
+            text_key: None,
+            text_lines: 0,
+            overlay: None,
         })
     }
 }
@@ -278,6 +308,10 @@ pub struct Target {
     output: wgpu::Buffer,
     readback: wgpu::Buffer,
     bind: wgpu::BindGroup,
+    atlas: wgpu::Buffer,
+    text_key: Option<(String, u32)>,
+    text_lines: u32,
+    overlay: Option<overlay::PreparedOverlay>,
 }
 
 impl Target {
@@ -286,9 +320,50 @@ impl Target {
     }
 
     pub fn frame(&mut self, scene: &Scene, phase: f32) -> Result<Vec<u8>, String> {
+        self.frame_with_text_phase(scene, phase, phase)
+    }
+
+    pub fn set_overlay(&mut self, source: Option<(std::sync::Arc<Overlay>, bool)>) {
+        self.overlay = match source {
+            Some((source, fit)) => {
+                if self.overlay.as_ref().is_some_and(|current| {
+                    current.fit == fit && std::sync::Arc::ptr_eq(&current.source, &source)
+                }) {
+                    return;
+                }
+                Some(overlay::PreparedOverlay::new(
+                    source,
+                    fit,
+                    self.width,
+                    self.height,
+                ))
+            }
+            None => None,
+        };
+    }
+
+    pub fn frame_with_text_phase(
+        &mut self,
+        scene: &Scene,
+        phase: f32,
+        text_phase: f32,
+    ) -> Result<Vec<u8>, String> {
         scene.validate()?;
-        if !phase.is_finite() {
+        if !phase.is_finite() || !text_phase.is_finite() {
             return Err("Invalid loop phase.".into());
+        }
+        let text = &scene.text;
+        let key = text.key();
+        if key != self.text_key {
+            self.text_lines = 0;
+            if let Some((content, font)) = &key {
+                let (pixels, lines) = text::prepare(content, *font)?;
+                self.renderer
+                    .queue
+                    .write_buffer(&self.atlas, 0, bytemuck::cast_slice(&pixels));
+                self.text_lines = lines;
+            }
+            self.text_key = key;
         }
         let params = Params {
             size: [self.width, self.height],
@@ -303,6 +378,17 @@ impl Target {
                 scene.animation.shift_y,
                 0.0,
             ],
+            text_style: [self.text_lines, text.mode, text.treatment, text.blend],
+            text_flags: [text.background, u32::from(text.crt), 0, 0],
+            text_layout: [
+                text.size,
+                text.shift_x,
+                text.shift_y,
+                text_phase.rem_euclid(1.0) * text.cycles as f32,
+            ],
+            text_shape: [text.density, text.inner_size, text.spacing, text.glow],
+            text_color: rgb(text.foreground, text.opacity),
+            text_accent: rgb(text.accent, text.dim),
             seed: scene.seed,
             phase: scene.animation.phase(phase, scene.duration),
             energy: [0.45, 0.75, 1.0][scene.motion as usize] * scene.animation.movement,
@@ -333,8 +419,11 @@ impl Target {
         recv.recv()
             .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?;
-        let pixels = slice.get_mapped_range().to_vec();
+        let mut pixels = slice.get_mapped_range().to_vec();
         self.readback.unmap();
+        if let Some(overlay) = &self.overlay {
+            overlay.blend(&mut pixels, self.width);
+        }
         Ok(pixels)
     }
 }

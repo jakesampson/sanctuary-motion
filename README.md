@@ -4,11 +4,12 @@ An offline desktop studio for creating seamless worship backgrounds. Choose a lo
 
 ## Make a loop
 
-1. Pick a look and palette. Use **Motion** to choose how strongly the background moves.
-2. Select a **Screen** preset or apply your display's exact pixel dimensions. Turn on **Preview lyrics** to check readability.
-3. Choose **Export background** and save an MP4 loop or PNG still. Use a new filename when exporting. The editor preserves existing output files.
+1. Choose a **Look**, then apply an optional surface **Finish**.
+2. Set **Color** and **Motion**. Use **Text** to create an optional title, ticker, scroll, or patterned text layer. **Preview lyrics** is a separate readability guide.
+3. In **Screen**, pick a size or enter exact pixels. Add a local PNG, JPEG or vector SVG overlay if you need a logo or frame.
+4. Choose **Export background** and save an MP4 loop or PNG still. Use the export checkboxes to include the text and image layers. The editor preserves existing output files.
 
-Use **Save project** to keep a reusable design in a local `.sanctuary` file. The sample lyrics show in the preview only. The app generates and encodes the media on the machine.
+Use **Save project** to keep a reusable design in a local `.sanctuary` file. The sample lyrics show in the preview only. Image overlays stay attached to the current app session. The app renders and encodes media on the machine.
 
 ## Build locally
 

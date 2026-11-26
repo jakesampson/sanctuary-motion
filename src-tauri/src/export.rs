@@ -1,4 +1,4 @@
-use sanctuary_render::{write_png, Renderer, Scene};
+use sanctuary_render::{write_png, Overlay, Renderer, Scene};
 use serde::Deserialize;
 use std::{
     io::{Read, Write},
@@ -6,7 +6,7 @@ use std::{
     process::{Child, Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
-        Mutex, MutexGuard,
+        Arc, Mutex, MutexGuard,
     },
 };
 use tauri::{AppHandle, Emitter};
@@ -18,6 +18,7 @@ pub struct ExportRequest {
     scene: Scene,
     path: PathBuf,
     format: Format,
+    pub overlay_fit: Option<bool>,
 }
 
 #[derive(Clone, Copy, Deserialize)]
@@ -101,11 +102,13 @@ pub fn run(
     renderer: &Renderer,
     job: &Job,
     request: ExportRequest,
+    overlay: Option<(Arc<Overlay>, bool)>,
 ) -> Result<(), String> {
     let ExportRequest {
         scene,
         path,
         format,
+        overlay_fit: _,
     } = request;
     scene.validate()?;
     let expected = match format {
@@ -139,6 +142,7 @@ pub fn run(
         .map_err(|error| format!("Could not prepare this output folder. {error}"))?;
     let temporary = staging.path().join(format!("output.{expected}"));
     let mut target = renderer.target(scene.width, scene.height)?;
+    target.set_overlay(overlay);
     job.check()?;
     match format {
         Format::Png => {
