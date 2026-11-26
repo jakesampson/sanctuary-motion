@@ -161,6 +161,8 @@ fn text_layer(source: vec3f, uv: vec2f) -> vec3f {
     switch style {
         case 24u, 32u, 35u, 36u: {
             alpha=max(0.0,bleed-alpha*0.75);
+            if style==32u { alpha*=1.25; paint=mix(paint,accent,0.45); }
+            if style==35u { alpha*=0.55+0.45*smoothstep(-0.2,0.08,p.x-p.y); }
             if style==36u { alpha*=0.3+0.70*abs(sin(p.x*76.0+p.y*41.0+spin)); }
             paint=mix(paint,accent,0.56);
         }

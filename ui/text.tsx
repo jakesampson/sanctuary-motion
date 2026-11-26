@@ -24,6 +24,7 @@ const treatments = [
   'Laser Outline', 'Volumetric Title', 'Spectrum Edge', 'Volumetric Down', 'Volumetric Sweep',
   'Volumetric Spectrum', 'Vellum Sweep', 'Echo Stack', 'Light Through', 'Liquid Word',
 ];
+const sampleWords = 'Holy\nPrince of Peace\nKing of Kings';
 
 export function TextPanel({ text, onChange, playing, onPlayback, onRestart }: {
   text: TextSettings; onChange: (text: TextSettings) => void; playing: boolean;
@@ -36,7 +37,9 @@ export function TextPanel({ text, onChange, playing, onPlayback, onRestart }: {
   return <div className="step-content">
     <div className="card-heading"><h2>Text layer</h2></div>
     <div className="editor-actions">
-      <button aria-pressed={text.enabled} onClick={() => update({ enabled: !text.enabled })}>{text.enabled ? 'Hide text' : 'Show text'}</button>
+      <button aria-pressed={text.enabled} onClick={() => update(text.enabled
+        ? { enabled: false }
+        : { enabled: true, content: text.content.trim() ? text.content : sampleWords })}>{text.enabled ? 'Hide text' : 'Show text'}</button>
       <button onClick={onPlayback}>{playing ? 'Pause text' : 'Play text'}</button>
       <button onClick={onRestart}>Restart text</button>
     </div>
@@ -45,7 +48,7 @@ export function TextPanel({ text, onChange, playing, onPlayback, onRestart }: {
         <button key={name} aria-pressed={text.mode === mode} onClick={() => update({ mode })}>{name}</button>)}
     </div>
     <label className="field">Words
-      <textarea rows={4} maxLength={1024} placeholder={'Holy\nPrince of Peace\nKing of Kings'} value={text.content}
+      <textarea rows={4} maxLength={1024} placeholder={sampleWords} value={text.content}
         onChange={event => update({ content: event.target.value.split(/\r?\n/).slice(0,12).join('\n'), enabled: true })} />
     </label>
     {text.mode === 0 && <label className="field">Treatment<select value={text.treatment} onChange={event => update({ treatment: Number(event.target.value) })}>

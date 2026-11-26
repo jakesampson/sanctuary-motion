@@ -1,5 +1,5 @@
-use sanctuary_render::{write_png, Renderer, Scene};
-use std::{fs, time::Instant};
+use sanctuary_render::{write_png, Overlay, Renderer, Scene};
+use std::{fs, path::Path, sync::Arc, time::Instant};
 
 fn main() -> Result<(), String> {
     let renderer = Renderer::new()?;
@@ -103,16 +103,38 @@ fn main() -> Result<(), String> {
     text_scene.text.enabled = true;
     text_scene.text.content = "Holy\nPrince of Peace\nLumière".into();
     let plain = target.frame(&scene, 0.0)?;
+    let mut treatments = Vec::new();
     for treatment in 0..46 {
         text_scene.text.treatment = treatment;
         let rendered = target.frame(&text_scene, 0.0)?;
         assert_ne!(plain, rendered, "text treatment {treatment} did not render");
         assert_eq!(rendered, target.frame(&text_scene, 1.0)?);
+        assert!(
+            !treatments.contains(&rendered),
+            "text treatment {treatment} duplicates another treatment"
+        );
+        treatments.push(rendered);
     }
     for mode in 1..4 {
         text_scene.text.mode = mode;
         assert_ne!(plain, target.frame(&text_scene, 0.0)?);
     }
-    println!("All text treatments and layout modes rendered");
+    println!("All text treatments distinct and all layout modes rendered");
+    for extension in ["png", "jpg"] {
+        let name = format!("artifacts/overlay-fixture.{extension}");
+        image::RgbImage::from_pixel(7, 5, image::Rgb([238, 25, 116]))
+            .save(&name)
+            .map_err(|error| error.to_string())?;
+        let overlay = Arc::new(Overlay::load(Path::new(&name))?);
+        target.set_overlay(Some((overlay.clone(), true)));
+        let fit = target.frame(&scene, 0.0)?;
+        target.set_overlay(Some((overlay, false)));
+        let fill = target.frame(&scene, 0.0)?;
+        assert_ne!(fit, fill, "{extension} Fit and Fill must differ");
+        assert_ne!(plain, fill);
+        target.set_overlay(None);
+        assert_eq!(plain, target.frame(&scene, 0.0)?);
+    }
+    println!("PNG and JPEG overlays passed Fit, Fill and clear");
     Ok(())
 }
