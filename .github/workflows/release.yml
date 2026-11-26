@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13
+            target: x86_64-apple-darwin
+            label: macOS Intel
+          - os: macos-14
+            target: aarch64-apple-darwin
+            label: macOS Apple Silicon
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: Windows 11
+    runs-on: ${{ matrix.os }}
+    name: ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: '-'
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Sanctuary Motion v0.1 beta
+          releaseBody: |
+            Offline desktop beta of Sanctuary Motion.
+
+            **Builds**
+            - macOS Intel (11+)
+            - macOS Apple Silicon (11+)
+            - Windows 11 (x64 NSIS installer)
+
+            macOS builds are ad-hoc signed for testing and are not notarized. Windows needs WebView2, which the installer can provide.
+          releaseDraft: false
+          prerelease: true
+          args: --target ${{ matrix.target }}

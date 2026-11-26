@@ -1,4 +1,5 @@
-import { ColorField, RangeControl, percent, type RGB } from './controls';
+import type { ComponentType } from 'react';
+import { ColorField, RangeControl, ResetControl, percent, type RGB } from './controls';
 
 export type TextSettings = {
   enabled: boolean; content: string; mode: number; treatment: number; font: number; uppercase: boolean;
@@ -26,16 +27,21 @@ const treatments = [
 ];
 const sampleWords = 'Holy\nPrince of Peace\nKing of Kings';
 
-export function TextPanel({ text, onChange, playing, onPlayback, onRestart }: {
+export function TextPanel({ look, finish, Thumbnail, text, onChange, playing, onPlayback, onRestart }: {
+  look: number; finish: number;
+  Thumbnail: ComponentType<{ look: number; finish: number; text?: TextSettings }>;
   text: TextSettings; onChange: (text: TextSettings) => void; playing: boolean;
   onPlayback: () => void; onRestart: () => void;
 }) {
   const update = (value: Partial<TextSettings>) => onChange({ ...text, ...value });
   const ratio = (key: 'density' | 'innerSize' | 'spacing' | 'glow' | 'opacity' | 'dim', name: string) =>
-    <RangeControl name={name} value={text[key]} min={0} max={1} step={0.01}
+    <RangeControl name={name} value={text[key]} min={0} max={1} step={0.01} defaultValue={initialText[key]}
       label={percent(text[key])} onChange={value => update({ [key]: value })} />;
   return <div className="step-content">
-    <div className="card-heading"><h2>Text layer</h2></div>
+    <div className="card-heading">
+      <h2>Text layer</h2>
+      <ResetControl name="text layer" onReset={() => onChange(initialText)} />
+    </div>
     <div className="editor-actions">
       <button aria-pressed={text.enabled} onClick={() => update(text.enabled
         ? { enabled: false }
@@ -47,26 +53,43 @@ export function TextPanel({ text, onChange, playing, onPlayback, onRestart }: {
       {['Treatments', 'Ticker', 'Full screen', 'Scroll'].map((name, mode) =>
         <button key={name} aria-pressed={text.mode === mode} onClick={() => update({ mode })}>{name}</button>)}
     </div>
+    {text.mode === 0 && <div className="gallery">
+      <div className="card-heading">
+        <h2>Treatment</h2>
+        <span className="size">{treatments[text.treatment]}</span>
+        <ResetControl name="treatment" onReset={() => update({ treatment: initialText.treatment })} />
+      </div>
+      <div className="looks" aria-label="text treatments">
+        {treatments.map((name, id) =>
+          <button className="look" key={name} aria-pressed={id === text.treatment}
+            onClick={() => update({ treatment: id, enabled: true, content: text.content.trim() ? text.content : sampleWords })}>
+            <Thumbnail look={look} finish={finish} text={{
+              ...text, enabled: true, mode: 0, treatment: id,
+              content: text.content.trim() ? text.content : sampleWords,
+            }} /><span>{name}</span>
+          </button>)}
+      </div>
+    </div>}
     <label className="field">Words
       <textarea rows={4} maxLength={1024} placeholder={sampleWords} value={text.content}
         onChange={event => update({ content: event.target.value.split(/\r?\n/).slice(0,12).join('\n'), enabled: true })} />
     </label>
-    {text.mode === 0 && <label className="field">Treatment<select value={text.treatment} onChange={event => update({ treatment: Number(event.target.value) })}>
-      <optgroup label="Titles"><option value={0}>{treatments[0]}</option>
-        {treatments.slice(30).map((name, index) => <option key={name} value={index+30}>{name}</option>)}</optgroup>
-      <optgroup label="Text patterns">
-        {treatments.slice(1,30).map((name,index) => <option key={name} value={index+1}>{name}</option>)}</optgroup>
-    </select></label>}
     <div className="editor-actions">
       <label className="field">Typeface<select value={text.font} onChange={event => update({ font: Number(event.target.value) })}>
         {['Sans serif', 'Serif', 'Monospace'].map((name,index) => <option key={name} value={index}>{name}</option>)}
       </select></label>
       <label className="toggle"><input type="checkbox" checked={text.uppercase} onChange={event => update({ uppercase: event.target.checked })} /> All caps</label>
     </div>
-    <RangeControl name="Text size" value={text.size} min={0.25} max={3} step={0.01} label={percent(text.size)}
-      onChange={size => update({ size })} />
-    <details><summary>Text appearance and timing</summary>
-      <RangeControl name="Text speed" value={text.cycles} min={0} max={4}
+    <RangeControl name="Text size" value={text.size} min={0.25} max={3} step={0.01} defaultValue={initialText.size}
+      label={percent(text.size)} onChange={size => update({ size })} />
+    <details><summary>Text appearance and timing<ResetControl name="text appearance and timing" onReset={() => update({
+      cycles: initialText.cycles, density: initialText.density, innerSize: initialText.innerSize,
+      spacing: initialText.spacing, glow: initialText.glow, opacity: initialText.opacity,
+      shiftX: initialText.shiftX, shiftY: initialText.shiftY, blend: initialText.blend,
+      foreground: initialText.foreground, accent: initialText.accent, crt: initialText.crt,
+      background: initialText.background, dim: initialText.dim,
+    })} /></summary>
+      <RangeControl name="Text speed" value={text.cycles} min={0} max={4} defaultValue={initialText.cycles}
         label={text.cycles === 0 ? 'Still' : text.cycles + ' per loop'} onChange={cycles => update({ cycles })} />
       {text.mode === 0 && text.treatment > 0 && text.treatment < 30 && <>
         {ratio('density', 'Density')}{ratio('innerSize', 'Inner size')}
@@ -74,7 +97,8 @@ export function TextPanel({ text, onChange, playing, onPlayback, onRestart }: {
       {ratio('spacing','Spacing')}{ratio('glow','Glow')}{ratio('opacity','Opacity')}
       {(['shiftX', 'shiftY'] as const).map((key,index) =>
         <RangeControl key={key} name={(index === 0 ? 'Horizontal' : 'Vertical') + ' text shift'}
-          value={text[key]} min={-0.5} max={0.5} step={0.01} label={percent(text[key])} onChange={value => update({ [key]: value })} />)}
+          value={text[key]} min={-0.5} max={0.5} step={0.01} defaultValue={initialText[key]}
+          label={percent(text[key])} onChange={value => update({ [key]: value })} />)}
       <label className="field">Blend mode<select value={text.blend} onChange={event => update({ blend: Number(event.target.value) })}>
         {['Normal','Screen','Overlay','Soft light','Multiply','Add','Color dodge','Difference'].map((name,index) =>
           <option key={name} value={index}>{name}</option>)}

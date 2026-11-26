@@ -18,9 +18,19 @@ struct Params {
     text_shape: vec4f,
     text_color: vec4f,
     text_accent: vec4f,
+    look_tune: array<vec4f, 4>,
+    finish_tune: array<vec4f, 2>,
 }
 
 @group(0) @binding(0) var<uniform> settings: Params;
+
+fn look_t(i: u32) -> f32 {
+    return settings.look_tune[i / 4u][i % 4u];
+}
+
+fn finish_t(i: u32) -> f32 {
+    return settings.finish_tune[i / 4u][i % 4u];
+}
 @group(0) @binding(1) var<storage, read_write> pixels: array<u32>;
 
 fn hash(p: vec2f) -> f32 {
@@ -65,57 +75,12 @@ fn drifting_lights(p: vec2f, t: f32, seed: f32, dust: bool) -> f32 {
 
 fn look_color(sample_uv: vec2f, phase: f32) -> vec3f {
     let uv = (sample_uv-0.5-settings.framing.yz)/settings.framing.x+0.5;
-    let aspect = settings.composition;
-    let p = (uv-0.5)*vec2f(aspect,1.0)/pow(max(aspect,1.0),0.42);
     let t = phase*6.283185307;
     let drift = vec2f(cos(t),sin(t))*settings.energy;
     let seed = f32(settings.seed % 997u)*0.71;
-    var body = 0.0;
-    var glow = 0.0;
-    switch settings.look {
-        case 0u: {
-            let ripple = sin(p.x*4.5+seed*0.3+drift.x)*0.14 + sin(p.x*8.0+drift.y)*0.064;
-            let haze = mist(p*4.8+drift*0.65+seed);
-            let veil = p.y+0.09+ripple+(haze-0.5)*0.24;
-            body = exp(-11.0*abs(veil))*smoothstep(0.12,0.78,haze)*1.46;
-            glow = exp(-88.0*pow(veil+0.035,2.0))*haze*0.8;
-            body += 0.19*haze;
-        }
-        case 1u: {
-            let flow = p.y*9.0 + sin(p.x*4.1+drift.x+seed)*2.2 + p.x*3.0;
-            let folds = sin(flow+sin(flow*1.9+drift.y)*0.68);
-            body = pow(folds*0.5+0.5, 1.6)*0.78;
-            glow = pow(folds*0.5+0.5, 8.0)*0.46;
-        }
-        case 2u: {
-            body = mist(p*2.2+drift*0.24+seed)*0.36;
-            glow = drifting_lights(p, t, seed, false)*0.52;
-        }
-        case 3u: {
-            let beam = exp(-4.0*pow(p.x + p.y*0.9 + drift.x*0.12,2.0));
-            body = beam*mist(p*5.0+seed+drift)*0.65;
-            glow = drifting_lights(p,t,seed+12.0,true)*beam*1.2;
-        }
-        case 4u: {
-            let fog = mist(p*3.0+vec2f(0.75,0.38)*drift+seed);
-            let wisps = mist(p*6.0+fog+drift*0.47+seed*1.6);
-            body = smoothstep(0.22,0.82,fog)*0.84;
-            glow = smoothstep(0.40,0.82,wisps)*body*0.58;
-        }
-        case 5u: {
-            let source = p-vec2f(-0.47+drift.x*0.07,-0.84);
-            let angle = atan2(source.y,source.x);
-            let ray = pow(0.5+0.5*sin(angle*26.0+seed*0.6+drift.y),6.0);
-            let falloff = exp(-1.35*length(source));
-            body = falloff*1.6*(0.3+0.83*ray);
-            glow = falloff*ray*0.84;
-        }
-        default: {
-            let light = library_look(settings.look,uv,t,drift,seed);
-            body = light.x;
-            glow = light.y;
-        }
-    }
+    let light = library_look(settings.look, uv, t, drift, seed);
+    var body = light.x;
+    var glow = light.y;
     let vignette = max(0.38, 1.0-dot(uv-0.5,uv-0.5)*1.28);
     let strength = settings.intensity*vignette;
     let base = mix(settings.colors[0].rgb, settings.colors[1].rgb, clamp(body*strength,0.0,1.0));

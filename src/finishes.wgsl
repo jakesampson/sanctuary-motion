@@ -11,7 +11,8 @@ fn finish_color(uv: vec2f, finish: u32) -> vec3f {
     let surface = uv*fit;
     let cell = floor(surface*24.0);
     let grain = hash(floor(surface*290.0)+f32(settings.seed));
-    let flutes = fract(surface.x*22.0)-0.5;
+    let flute_axis = vec2f(cos(radians(finish_t(2u))), sin(radians(finish_t(2u))));
+    let flutes = fract(dot(surface, flute_axis)*max(2.0, finish_t(0u)))-0.5;
     var sample_uv = uv;
     var mask = 1.0;
     var taps = 1u;
@@ -21,19 +22,19 @@ fn finish_color(uv: vec2f, finish: u32) -> vec3f {
     switch finish {
         case 1u, 3u, 8u, 9u: {
             let reed = sin(flutes*6.2831853);
-            var refraction = reed*0.021;
-            if finish==3u { refraction=flutes*0.17; }
-            if finish==8u { refraction=reed*0.009; }
-            if finish==9u { refraction=reed*0.025+sin(surface.x*231.0)*0.009; }
+            var refraction = reed*finish_t(1u)*0.12;
+            if finish==3u { refraction=flutes*mix(0.02,0.22,finish_t(1u)); }
+            if finish==8u { refraction=reed*mix(0.004,0.04,finish_t(1u)); }
+            if finish==9u { refraction=reed*mix(0.01,0.08,finish_t(1u))+sin(surface.x*231.0)*0.009; }
             sample_uv.x += refraction/fit.x;
             mask = 0.74+0.26*smoothstep(-0.3,0.3,reed);
         }
         case 2u, 39u, 41u, 42u: {
             taps = 3u;
-            if finish==2u { separation = vec2f(0.021,0.009); }
-            if finish==39u { separation = vec2f(0.019,0.013)*smoothstep(0.035,0.45,abs(p.y)); }
-            if finish==41u { separation = vec2f(0.092,0.019)*(0.5+motion.y*0.31); delay=0.027; }
-            if finish==42u { separation = vec2f(0.034,0.016); delay=0.12; }
+            if finish==2u { separation = vec2f(0.008,0.004)*mix(1.0, 8.0, finish_t(0u))*finish_t(1u); }
+            if finish==39u { separation = vec2f(0.019,0.013)*finish_t(0u)*smoothstep(0.035,0.45,abs(p.y)); }
+            if finish==41u { separation = vec2f(0.092,0.019)*finish_t(0u)*(0.5+motion.y*0.31); delay=0.027*finish_t(1u); }
+            if finish==42u { separation = vec2f(0.034,0.016)*finish_t(0u); delay=0.12*finish_t(1u); }
         }
         case 4u, 5u, 7u: {
             var grid = surface*11.0;
@@ -49,7 +50,11 @@ fn finish_color(uv: vec2f, finish: u32) -> vec3f {
                 mask = (1.0-smoothstep(-0.026,0.0,arch))*mix(0.27,1.0,smoothstep(0.04,0.21,lead));
             }
         }
-        case 6u: { sample_uv += vec2f(sin(surface.y*26.0+motion.x),cos(surface.x*22.0+motion.y))*0.047/fit; }
+        case 6u: {
+            let dir = radians(finish_t(2u));
+            let wave = vec2f(cos(dir), sin(dir))*finish_t(0u);
+            sample_uv += vec2f(sin(dot(surface,wave)*2.0+motion.x),cos(dot(surface,wave.yx)*2.0+motion.y))*0.08*finish_t(1u)/fit;
+        }
         case 29u: { mask=1.0-smoothstep(0.31,0.37,length(shape)); }
         case 30u: {
             let q=shape-vec2f(0,0.04);

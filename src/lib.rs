@@ -3,10 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use wgpu::util::DeviceExt;
 
-pub const LOOK_COUNT: u32 = 82;
+pub const LOOK_COUNT: u32 = 99;
 pub const FINISH_COUNT: u32 = 47;
 mod overlay;
 mod text;
+mod tune;
 pub use overlay::Overlay;
 pub use text::TextSettings;
 
@@ -23,6 +24,10 @@ pub struct Scene {
     pub animation: AnimationSettings,
     #[serde(default)]
     pub text: TextSettings,
+    #[serde(default)]
+    pub look_tune: TuneSettings,
+    #[serde(default)]
+    pub finish_tune: TuneSettings,
     pub seed: u32,
     pub motion: u32,
     pub intensity: f32,
@@ -83,6 +88,27 @@ pub struct ColorSettings {
     pub layout: u32,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TuneSettings {
+    pub values: Vec<f32>,
+    pub motions: Vec<f32>,
+    pub auto: bool,
+}
+
+impl TuneSettings {
+    fn validate(&self) -> Result<(), String> {
+        if self.values.len() > 16
+            || self.motions.len() > 16
+            || self.values.iter().any(|value| !value.is_finite())
+            || self.motions.iter().any(|value| !value.is_finite())
+        {
+            return Err("Invalid look or finish settings.".into());
+        }
+        Ok(())
+    }
+}
+
 impl Default for ColorSettings {
     fn default() -> Self {
         Self {
@@ -110,6 +136,8 @@ impl Default for Scene {
             color: ColorSettings::default(),
             animation: AnimationSettings::default(),
             text: TextSettings::default(),
+            look_tune: TuneSettings::default(),
+            finish_tune: TuneSettings::default(),
             seed: 1,
             motion: 1,
             intensity: 0.75,
@@ -124,7 +152,11 @@ impl Default for Scene {
 
 impl Scene {
     pub fn validate(&self) -> Result<(), String> {
+        debug_assert_eq!(tune::LOOK_TUNE.len(), LOOK_COUNT as usize);
+        debug_assert_eq!(tune::FINISH_TUNE.len(), FINISH_COUNT as usize);
         self.text.validate()?;
+        self.look_tune.validate()?;
+        self.finish_tune.validate()?;
         if self.version != 1
             || self.look >= LOOK_COUNT
             || self.finish >= FINISH_COUNT
@@ -174,6 +206,8 @@ struct Params {
     text_shape: [f32; 4],
     text_color: [f32; 4],
     text_accent: [f32; 4],
+    look_tune: [[f32; 4]; 4],
+    finish_tune: [[f32; 4]; 2],
 }
 
 #[derive(Clone)]
@@ -389,6 +423,22 @@ impl Target {
             text_shape: [text.density, text.inner_size, text.spacing, text.glow],
             text_color: rgb(text.foreground, text.opacity),
             text_accent: rgb(text.accent, text.dim),
+            look_tune: pack_tune(tune::bake(
+                tune::LOOK_TUNE,
+                scene.look,
+                &scene.look_tune.values,
+                &scene.look_tune.motions,
+                scene.look_tune.auto,
+                phase,
+            )),
+            finish_tune: pack_finish(tune::bake(
+                tune::FINISH_TUNE,
+                scene.finish,
+                &scene.finish_tune.values,
+                &scene.finish_tune.motions,
+                scene.finish_tune.auto,
+                phase,
+            )),
             seed: scene.seed,
             phase: scene.animation.phase(phase, scene.duration),
             energy: [0.45, 0.75, 1.0][scene.motion as usize] * scene.animation.movement,
@@ -430,6 +480,22 @@ impl Target {
 
 fn rgb([r, g, b]: [u8; 3], alpha: f32) -> [f32; 4] {
     [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, alpha]
+}
+
+fn pack_tune(values: [f32; 16]) -> [[f32; 4]; 4] {
+    [
+        [values[0], values[1], values[2], values[3]],
+        [values[4], values[5], values[6], values[7]],
+        [values[8], values[9], values[10], values[11]],
+        [values[12], values[13], values[14], values[15]],
+    ]
+}
+
+fn pack_finish(values: [f32; 16]) -> [[f32; 4]; 2] {
+    [
+        [values[0], values[1], values[2], values[3]],
+        [values[4], values[5], values[6], values[7]],
+    ]
 }
 
 pub fn write_png(out: impl Write, width: u32, height: u32, pixels: &[u8]) -> Result<(), String> {

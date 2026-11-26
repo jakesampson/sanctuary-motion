@@ -6,8 +6,11 @@ import { createRoot } from 'react-dom/client';
 import './style.css';
 import { catalog, looks } from './looks';
 import { finishes } from './finishes';
-import { ColorPanel, MotionPanel, initialColor, initialAnimation, type RGB, type ColorSettings, type AnimationSettings } from './controls';
+import { ColorPanel, MotionPanel, TunePanel, RangeControl, ResetControl, percent, initialColor, initialAnimation, type RGB, type ColorSettings, type AnimationSettings } from './controls';
 import { TextPanel, initialText, type TextSettings } from './text';
+import { defaultLookTune, defaultFinishTune, lookTune, finishTune, type TuneSettings } from './tune';
+
+const editorSteps = ['Look', 'Finish', 'Color', 'Motion', 'Text', 'Screen'] as const;
 
 type Palette = [RGB, RGB, RGB];
 type Scene = {
@@ -17,6 +20,8 @@ type Scene = {
   color: ColorSettings;
   animation: AnimationSettings;
   text: TextSettings;
+  lookTune: TuneSettings;
+  finishTune: TuneSettings;
   seed: number;
   motion: number;
   intensity: number;
@@ -45,6 +50,7 @@ const screens = [
 ] as const;
 const initial: Scene = {
   version: 1, look: 0, finish: 0, color: initialColor, animation: initialAnimation, text: initialText,
+  lookTune: defaultLookTune(0), finishTune: defaultFinishTune(0),
   seed: 1, motion: 1, intensity: 0.75,
   colors: thumbnailPalettes[0].colors, width: 1920, height: 1080, fps: 30, duration: 15,
 };
@@ -58,20 +64,33 @@ function draw(canvas: HTMLCanvasElement, bytes: ArrayBuffer, width: number, heig
   context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
 }
 
-function Thumbnail({ look, finish }: { look: number; finish: number }) {
+function Thumbnail({ look, finish, text }: { look: number; finish: number; text?: TextSettings }) {
   const canvas = useRef<HTMLCanvasElement>(null);
+  const [visible, setVisible] = useState(false);
   useEffect(() => {
+    const node = canvas.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setVisible(true);
+    }, { rootMargin: '160px' });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!visible) return;
     let ignore = false;
-    const scene = { ...initial, look, finish, colors: thumbnailPalettes[look % thumbnailPalettes.length].colors };
+    const scene = {
+      ...initial, look, finish,
+      colors: thumbnailPalettes[look % thumbnailPalettes.length].colors,
+      text: text ?? initial.text,
+    };
     invoke<ArrayBuffer>('preview_frame', { scene, phase: 0.21, width: 144, height: 81 })
       .then(bytes => { if (!ignore && canvas.current) draw(canvas.current, bytes, 144, 81); })
       .catch(() => { /* The main preview surfaces renderer errors. */ });
     return () => { ignore = true; };
-  }, [look, finish]);
+  }, [visible, look, finish, text?.treatment, text?.mode, text?.content, text?.enabled]);
   return <canvas ref={canvas} aria-hidden="true" />;
 }
-
-const pageSize = 12;
 
 function EffectGallery({ surface, selected, onSelect }: {
   surface: boolean; selected: number; onSelect: (id: number) => void;
@@ -81,36 +100,29 @@ function EffectGallery({ surface, selected, onSelect }: {
   const categories = ['All', ...new Set(entries.map(([, category]) => category))];
   const [category, setCategory] = useState('All');
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
   const normalized = (value: string) => value.toLocaleLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
   const query = normalized(search.trim());
   const matches = entries.map(([name, group], id) => ({ name, group, id })).filter(({ name, group }) =>
     (category === 'All' || group === category) && normalized(`${name} ${group}`).includes(query));
-  const start = page * pageSize;
   return <div className="gallery">
     <div className="card-heading"><h2>{surface ? 'Surface finish' : 'Background look'}</h2><span className="size">{entries[selected][0]}</span></div>
     <div className="look-filters">
       <label className="field">Collection
-        <select value={category} onChange={event => { setCategory(event.target.value); setPage(0); }}>
+        <select value={category} onChange={event => setCategory(event.target.value)}>
           {categories.map(group => <option key={group}>{group}</option>)}
         </select>
       </label>
       <label className="field">Search {itemName}
-        <input type="search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} />
+        <input type="search" value={search} onChange={event => setSearch(event.target.value)} />
       </label>
     </div>
     <div className="looks" aria-label={itemName}>
-      {matches.slice(start, start + pageSize).map(({ name, id }) =>
+      {matches.map(({ name, id }) =>
         <button className="look" key={id} aria-pressed={id === selected} onClick={() => onSelect(id)}>
           <Thumbnail look={surface ? 20 : id} finish={surface ? id : 0} /><span>{name}</span>
         </button>)}
     </div>
     {matches.length === 0 && <p className="gallery-status" role="status">No matching {itemName}.</p>}
-    {matches.length > pageSize && <div className="gallery-pages">
-      <button disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</button>
-      <span role="status">{start + 1}–{Math.min(start + pageSize, matches.length)} of {matches.length}</span>
-      <button disabled={start + pageSize >= matches.length} onClick={() => setPage(page + 1)}>Next</button>
-    </div>}
   </div>;
 }
 
@@ -334,6 +346,12 @@ function App() {
       </div>
     </header>
     <main>
+      <nav className="editor-steps" aria-label="Editor steps">
+        {editorSteps.map((label, index) =>
+          <button key={label} aria-current={step === index ? 'step' : undefined} onClick={() => setStep(index)}>
+            <span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span> {label}
+          </button>)}
+      </nav>
       <section className="studio" aria-label="Preview and looks">
         <div className="card stage">
           <div className="card-heading"><h2>Preview</h2><span className="size">{scene.width} × {scene.height}</span></div>
@@ -345,20 +363,25 @@ function App() {
           </div>
         </div>
         <section className="card editor" aria-label="Background editor">
-          <nav className="editor-steps" aria-label="Editor steps">
-            {['Look', 'Finish', 'Color', 'Motion', 'Text', 'Screen'].map((label, index) =>
-              <button key={label} aria-current={step === index ? 'step' : undefined} onClick={() => setStep(index)}>
-                <span aria-hidden="true">{index + 1}.</span> {label}
-              </button>)}
-          </nav>
-          {step === 0 && <EffectGallery key="looks" surface={false} selected={scene.look} onSelect={id => update('look', id)} />}
-          {step === 1 && <EffectGallery key="finishes" surface selected={scene.finish} onSelect={id => update('finish', id)} />}
+          {step === 0 && <>
+            <EffectGallery key="looks" surface={false} selected={scene.look}
+              onSelect={id => setScene(prev => ({ ...prev, look: id, lookTune: defaultLookTune(id) }))} />
+            <TunePanel title={`${looks[scene.look]} settings`} spec={lookTune[scene.look]} value={scene.lookTune}
+              onChange={value => update('lookTune', value)} />
+          </>}
+          {step === 1 && <>
+            <EffectGallery key="finishes" surface selected={scene.finish}
+              onSelect={id => setScene(prev => ({ ...prev, finish: id, finishTune: defaultFinishTune(id) }))} />
+            <TunePanel title={`${finishes[scene.finish][0]} settings`} spec={finishTune[scene.finish]} value={scene.finishTune}
+              onChange={value => update('finishTune', value)} />
+          </>}
           {step === 2 && <ColorPanel colors={scene.colors} color={scene.color}
             onChange={(colors, color) => setScene(prev => ({ ...prev, colors, color }))} />}
           {step === 3 && <MotionPanel animation={scene.animation} duration={scene.duration} motion={scene.motion}
             onAnimation={value => update('animation', value)} onDuration={value => update('duration', value)}
             onMotion={value => update('motion', value)} />}
-          {step === 4 && <TextPanel text={scene.text} onChange={value => update('text', value)} playing={textPlaying}
+          {step === 4 && <TextPanel look={scene.look} finish={scene.finish} Thumbnail={Thumbnail} text={scene.text}
+            onChange={value => update('text', value)} playing={textPlaying}
             onPlayback={() => setTextPlaying(value => !value)} onRestart={() => setTextReset(value => value + 1)} />}
           {step === 5 && <div className="step-content">
             <div className="card-heading"><h2>Screen and export</h2></div>
@@ -393,9 +416,9 @@ function App() {
       </section>
       <aside className="card inspector" aria-label="Background settings">
         <div className="card-heading"><h2>Settings</h2></div>
-        <details><summary>Fine tune</summary>
-          <label className="field">Intensity <input type="range" min="0" max="1" step="0.01" value={scene.intensity}
-            onChange={event => update('intensity', event.target.valueAsNumber)} /></label>
+        <details><summary>Fine tune<ResetControl name="fine tune" onReset={() => update('intensity', 0.75)} /></summary>
+          <RangeControl name="Intensity" value={scene.intensity} min={0} max={1} step={0.01} defaultValue={0.75}
+            label={percent(scene.intensity)} onChange={intensity => update('intensity', intensity)} />
           <button onClick={() => update('seed', crypto.getRandomValues(new Uint32Array(1))[0])}>Try another variation</button>
         </details>
         <div className="export-area">

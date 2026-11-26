@@ -29,9 +29,11 @@ async function runSmoke({ dir, fullDisk, missingEncoder }) {
     await waitFor(() => painted(document.querySelector('.preview-surface canvas')), 'Main canvas was never painted.');
     assert(document.querySelector('h1').textContent === 'Sanctuary Motion', 'Desktop editor loaded in the native webview');
     assert(document.querySelectorAll('.editor-steps button').length === 6, 'All six editor steps available');
-    await waitFor(() => [...document.querySelectorAll('.look canvas')].length === 12 &&
-      [...document.querySelectorAll('.look canvas')].every(painted), 'Preset thumbnails were not painted.');
-    assert(true, 'First page of procedural thumbnails painted');
+    await waitFor(() => {
+      const canvases = [...document.querySelectorAll('.look canvas')];
+      return canvases.length >= 12 && canvases.slice(0, 12).every(painted);
+    }, 'Preset thumbnails were not painted.');
+    assert(true, 'Look thumbnails painted');
     const preview = document.querySelector('.preview-surface canvas');
     const sample = () => preview.getContext('2d').getImageData(0, 0, preview.width, preview.height).data;
     const initial = sample();

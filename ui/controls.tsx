@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { type TuneSettings, type TuneSpec } from './tune';
 
 export type RGB = [number, number, number];
 type Palette = [RGB, RGB, RGB];
@@ -92,17 +93,68 @@ function RampChoices({ entries, active, select }: { entries: [string, Ramp][]; a
   </div>;
 }
 
-export function RangeControl({ name, value, min, max, step = 1, label, onChange }: {
-  name: string; value: number; min: number; max: number; step?: number; label: string; onChange: (value: number) => void;
+export function ResetControl({ name, onReset, disabled }: {
+  name: string; onReset: () => void; disabled?: boolean;
 }) {
-  return <label className="range-control">
+  return <button type="button" className="reset-control" aria-label={'Reset ' + name} title={'Reset ' + name}
+    disabled={disabled} onClick={event => { event.preventDefault(); event.stopPropagation(); onReset(); }}>↺</button>;
+}
+
+export function RangeControl({ name, value, min, max, step = 1, label, defaultValue, onChange }: {
+  name: string; value: number; min: number; max: number; step?: number; label: string;
+  defaultValue?: number; onChange: (value: number) => void;
+}) {
+  const reset = defaultValue == null ? undefined : () => onChange(defaultValue);
+  return <label className="range-control" onDoubleClick={reset}>
     <span>{name}<output aria-hidden="true">{label}</output></span>
     <input aria-label={name} aria-valuetext={label} type="range" value={value} min={min} max={max} step={step}
-      onChange={event => onChange(event.target.valueAsNumber)} />
+      onChange={event => onChange(event.target.valueAsNumber)} onDoubleClick={reset} />
   </label>;
 }
 
 export const percent = (value: number) => Math.round(value * 100) + '%';
+
+export function TunePanel({ title, spec, value, onChange }: {
+  title: string; spec: TuneSpec; value: TuneSettings; onChange: (value: TuneSettings) => void;
+}) {
+  if (spec.controls.length === 0) return null;
+  const values = spec.controls.map((control, index) => value.values[index] ?? control.value);
+  const motions = spec.controls.map((control, index) => value.motions[index] ?? control.motion ?? 0);
+  const setValue = (index: number, next: number) => {
+    const copy = [...values];
+    copy[index] = next;
+    onChange({ ...value, values: copy, motions });
+  };
+  const setMotion = (index: number, next: number) => {
+    const copy = [...motions];
+    copy[index] = next;
+    onChange({ ...value, values, motions: copy });
+  };
+  const defaults = spec.controls.map(control => control.value);
+  const motionDefaults = spec.controls.map(control => control.motion ?? 0);
+  const resetSection = () => onChange({ values: defaults, motions: motionDefaults, auto: false });
+  const resetMotion = () => onChange({ ...value, values, motions: motionDefaults, auto: false });
+  return <div className="tune-panel">
+    <div className="card-heading">
+      <h2>{title}</h2>
+      <ResetControl name={title} onReset={resetSection} />
+    </div>
+    {spec.controls.map((control, index) =>
+      <RangeControl key={control.label} name={control.label} value={values[index]}
+        min={control.min} max={control.max} step={control.step} defaultValue={control.value}
+        label={Number.isInteger(control.step) && control.step >= 1 ? String(values[index]) : percent((values[index]-control.min)/Math.max(0.0001, control.max-control.min))}
+        onChange={next => setValue(index, next)} />)}
+    {spec.auto && <details>
+      <summary>Control motion<ResetControl name="control motion" onReset={resetMotion} /></summary>
+      <label className="toggle"><input type="checkbox" checked={value.auto}
+        onChange={event => onChange({ ...value, values, motions, auto: event.target.checked })} /> Let these controls move on their own</label>
+      {spec.controls.map((control, index) => control.motion == null ? null :
+        <RangeControl key={control.label + '-motion'} name={control.label + ' motion'} value={motions[index]}
+          min={0} max={1} step={0.01} defaultValue={control.motion ?? 0} label={percent(motions[index])}
+          onChange={next => setMotion(index, next)} />)}
+    </details>}
+  </div>;
+}
 
 export function ColorPanel({ colors, color, onChange }: {
   colors: Palette; color: ColorSettings; onChange: (colors: Palette, color: ColorSettings) => void;
@@ -120,8 +172,12 @@ export function ColorPanel({ colors, color, onChange }: {
       setStatus('Palette saved on this computer.');
     } catch { setStatus('Could not save this palette.'); }
   };
+  const seaGlass: Palette = [[8, 12, 27], [39, 96, 132], [116, 225, 186]];
   return <div className="step-content">
-    <div className="card-heading"><h2>Color</h2></div>
+    <div className="card-heading">
+      <h2>Color</h2>
+      <ResetControl name="color" onReset={() => onChange(seaGlass, initialColor)} />
+    </div>
     <div className="segments" aria-label="Color mode">
       {['Palette', 'Tint', 'Gradient map'].map((name, mode) => <button key={name}
         aria-pressed={color.mode === mode} onClick={() => update({ mode })}>{name}</button>)}
@@ -148,8 +204,8 @@ export function ColorPanel({ colors, color, onChange }: {
           style={{ background: value }} />)}
       </div>
       <div className="color-fields"><ColorField name="Custom tint" value={color.tint} onChange={tint => update({ tint })} /></div>
-      <RangeControl name="Tint amount" value={color.amount} min={0} max={1} step={0.01} label={percent(color.amount)}
-        onChange={amount => update({ amount })} />
+      <RangeControl name="Tint amount" value={color.amount} min={0} max={1} step={0.01} defaultValue={initialColor.amount}
+        label={percent(color.amount)} onChange={amount => update({ amount })} />
     </>}
     {color.mode === 2 && <>
       <RampChoices entries={gradientPresets} active={color.gradient} select={gradient => update({ gradient })} />
@@ -172,28 +228,36 @@ export function MotionPanel({ animation, duration, motion, onAnimation, onDurati
   onAnimation: (animation: AnimationSettings) => void; onDuration: (duration: number) => void; onMotion: (motion: number) => void;
 }) {
   const update = (value: Partial<AnimationSettings>) => onAnimation({ ...animation, ...value });
+  const defaultDuration = 15;
+  const defaultMotion = 1;
   return <div className="step-content">
-    <div className="card-heading"><h2>Motion</h2></div>
+    <div className="card-heading">
+      <h2>Motion</h2>
+      <ResetControl name="motion" onReset={() => { onAnimation(initialAnimation); onDuration(defaultDuration); onMotion(defaultMotion); }} />
+    </div>
     <div className="segments" aria-label="Motion preset">
       {['Quiet', 'Gentle', 'Full'].map((label, index) => <button key={label} aria-pressed={motion === index} onClick={() => onMotion(index)}>{label}</button>)}
     </div>
-    <RangeControl name="Speed" value={animation.cycles} min={0} max={4}
+    <RangeControl name="Speed" value={animation.cycles} min={0} max={4} defaultValue={initialAnimation.cycles}
       label={animation.cycles === 0 ? 'Still' : animation.cycles + (animation.cycles === 1 ? ' cycle per loop' : ' cycles per loop')}
       onChange={cycles => update({ cycles })} />
-    <RangeControl name="Duration" value={duration} min={1} max={60} label={duration + ' s'} onChange={onDuration} />
-    <RangeControl name="Movement" value={animation.movement} min={0} max={2} step={0.01} label={percent(animation.movement)}
-      onChange={movement => update({ movement })} />
-    <details><summary>Framing and timing</summary>
-      <RangeControl name="Scale" value={animation.scale} min={0.5} max={3} step={0.01} label={percent(animation.scale)}
-        onChange={scale => update({ scale })} />
-      <RangeControl name="Horizontal shift" value={animation.shiftX} min={-0.5} max={0.5} step={0.01}
+    <RangeControl name="Duration" value={duration} min={1} max={60} defaultValue={defaultDuration} label={duration + ' s'} onChange={onDuration} />
+    <RangeControl name="Movement" value={animation.movement} min={0} max={2} step={0.01} defaultValue={initialAnimation.movement}
+      label={percent(animation.movement)} onChange={movement => update({ movement })} />
+    <details><summary>Framing and timing<ResetControl name="framing and timing" onReset={() => update({
+      scale: initialAnimation.scale, shiftX: initialAnimation.shiftX, shiftY: initialAnimation.shiftY,
+      stopFps: initialAnimation.stopFps, ease: initialAnimation.ease,
+    })} /></summary>
+      <RangeControl name="Scale" value={animation.scale} min={0.5} max={3} step={0.01} defaultValue={initialAnimation.scale}
+        label={percent(animation.scale)} onChange={scale => update({ scale })} />
+      <RangeControl name="Horizontal shift" value={animation.shiftX} min={-0.5} max={0.5} step={0.01} defaultValue={initialAnimation.shiftX}
         label={animation.shiftX === 0 ? 'Centered' : percent(animation.shiftX)} onChange={shiftX => update({ shiftX })} />
-      <RangeControl name="Vertical shift" value={animation.shiftY} min={-0.5} max={0.5} step={0.01}
+      <RangeControl name="Vertical shift" value={animation.shiftY} min={-0.5} max={0.5} step={0.01} defaultValue={initialAnimation.shiftY}
         label={animation.shiftY === 0 ? 'Centered' : percent(animation.shiftY)} onChange={shiftY => update({ shiftY })} />
-      <RangeControl name="Stop motion" value={animation.stopFps} min={0} max={24}
+      <RangeControl name="Stop motion" value={animation.stopFps} min={0} max={24} defaultValue={initialAnimation.stopFps}
         label={animation.stopFps === 0 ? 'Off' : animation.stopFps + ' fps'} onChange={stopFps => update({ stopFps })} />
-      <RangeControl name="Eased motion" value={animation.ease} min={0} max={1} step={0.01} label={percent(animation.ease)}
-        onChange={ease => update({ ease })} />
+      <RangeControl name="Eased motion" value={animation.ease} min={0} max={1} step={0.01} defaultValue={initialAnimation.ease}
+        label={percent(animation.ease)} onChange={ease => update({ ease })} />
     </details>
   </div>;
 }
