@@ -276,6 +276,13 @@ fn finish_color(uv: vec2f, finish: u32) -> vec3f {
         case 27u: { color=mix(color,settings.colors[1].rgb,0.22+0.13*sin(p.y*5.0+motion.x)); }
         case 28u: { color+=settings.colors[2].rgb*band(p.x+0.46-motion.x*0.13,0.09)*0.34; }
         case 37u: { if floor_reflection { color*=0.8; } }
+        case 47u: {
+            let coordinate = rotate2(shape,finish_t(1u)).y*finish_t(0u);
+            let distance = abs(fract(coordinate)-0.5);
+            let thickness = mix(0.04,0.43,finish_t(3u));
+            let line = 1.0-smoothstep(thickness,thickness+0.06,distance);
+            mask *= mix(1.0,line,finish_t(2u));
+        }
         default: {}
     }
     return mix(background,color,clamp(mask,0.0,1.0));

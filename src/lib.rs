@@ -4,7 +4,7 @@ use std::io::Write;
 use wgpu::util::DeviceExt;
 
 pub const LOOK_COUNT: u32 = 99;
-pub const FINISH_COUNT: u32 = 47;
+pub const FINISH_COUNT: u32 = 48;
 mod overlay;
 mod text;
 mod tune;

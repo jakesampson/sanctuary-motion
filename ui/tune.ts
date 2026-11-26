@@ -154,7 +154,13 @@ export const finishTune: TuneSpec[] = [
 {auto:true,controls:[{label:'Rows',min:6.0,max:90.0,step:1.0,value:48.0},{label:'Width',min:0.1,max:1.0,step:0.01,value:0.55, motion: 0.5},{label:'Tear',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Step',min:1.0,max:12.0,step:1.0,value:7.0},{label:'Color bands',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
 {auto:true,controls:[{label:'Pixels',min:8.0,max:60.0,step:1.0,value:34.0},{label:'Steps',min:0.0,max:1.0,step:0.02,value:0.5, motion: 0.5},{label:'Gaps',min:0.0,max:1.0,step:0.02,value:0.5, motion: 0.5}]},
 {auto:true,controls:[{label:'Columns',min:10.0,max:400.0,step:1.0,value:205.0},{label:'Length',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Amount',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Steps',min:2.0,max:80.0,step:1.0,value:41.0},{label:'Direction',min:0.0,max:90.0,step:90.0,value:90.0, motion: 0.5}]},
-{auto:true,controls:[{label:'Blocks',min:2.0,max:40.0,step:1.0,value:21.0},{label:'Offset',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Hits',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Rate',min:2.0,max:30.0,step:1.0,value:16.0},{label:'Color tear',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]}
+{auto:true,controls:[{label:'Blocks',min:2.0,max:40.0,step:1.0,value:21.0},{label:'Offset',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Hits',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Rate',min:2.0,max:30.0,step:1.0,value:16.0},{label:'Color tear',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:false,controls:[
+  {label:'Lines',min:12,max:180,step:1,value:64},
+  {label:'Angle',min:-90,max:90,step:1,value:0},
+  {label:'Strength',min:0,max:1,step:0.01,value:0.55},
+  {label:'Thickness',min:0.1,max:1,step:0.01,value:0.5},
+]}
 ];
 export const defaultLookTune = (look: number) => specTune(lookTune[look] ?? {auto:false,controls:[]});
 export const defaultFinishTune = (finish: number) => specTune(finishTune[finish] ?? {auto:false,controls:[]});
