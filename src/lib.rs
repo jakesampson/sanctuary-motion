@@ -77,6 +77,37 @@ impl AnimationSettings {
     }
 }
 
+#[cfg(test)]
+mod animation_tests {
+    use super::AnimationSettings;
+
+    #[test]
+    fn speed_and_easing_preserve_the_loop() {
+        let mut animation = AnimationSettings::default();
+        assert_eq!(animation.phase(0.125, 15), 0.125);
+        animation.cycles = 2;
+        assert_eq!(animation.phase(0.125, 15), 0.25);
+        animation.cycles = 0;
+        assert_eq!(animation.phase(0.125, 15), animation.phase(0.625, 15));
+
+        animation.cycles = 1;
+        animation.ease = 1.0;
+        assert!(animation.phase(0.0625, 15) < 0.0625);
+        assert_eq!(animation.phase(0.0, 15), animation.phase(1.0, 15));
+    }
+
+    #[test]
+    fn stop_motion_holds_frames_for_the_configured_real_time_interval() {
+        let animation = AnimationSettings {
+            stop_fps: 6,
+            ..AnimationSettings::default()
+        };
+        assert_eq!(animation.phase(0.01, 15), 0.0);
+        assert!(animation.phase(0.01, 40) > 0.0);
+        assert_eq!(animation.phase(0.0, 40), animation.phase(1.0, 40));
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ColorSettings {
