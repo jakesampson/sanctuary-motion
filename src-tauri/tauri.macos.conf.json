@@ -2,6 +2,6 @@
   "bundle": {
     "targets": ["app"],
     "externalBin": ["binaries/sanctuary-encoder"],
-    "macOS": { "minimumSystemVersion": "11.0" }
+    "macOS": { "minimumSystemVersion": "11.0", "signingIdentity": "-" }
   }
 }

@@ -19,17 +19,24 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15-intel
+          - os: macos-15
             target: x86_64-apple-darwin
             label: macOS Intel
+            bundles: app
           - os: macos-15
             target: aarch64-apple-darwin
             label: macOS Apple Silicon
+            bundles: app
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             label: Windows 11
+            bundles: nsis
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.label }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+      CARGO_TERM_COLOR: always
+      CARGO_BUILD_JOBS: 2
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -39,13 +46,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
       - run: npm ci
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: '-'
-          MACOSX_DEPLOYMENT_TARGET: '11.0'
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Sanctuary Motion v0.1 beta
@@ -60,4 +64,8 @@ jobs:
             macOS builds are ad-hoc signed for testing and are not notarized. Windows needs WebView2, which the installer can provide.
           releaseDraft: false
           prerelease: true
-          args: --target ${{ matrix.target }}
+          args: --verbose --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+          retryAttempts: 3
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: false
+          uploadWorkflowArtifacts: true

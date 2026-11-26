@@ -7,6 +7,7 @@
     "dev": "node packaging/prepare-encoder.mjs && vite --host 127.0.0.1 --port 1420 --strictPort",
     "build": "node packaging/prepare-encoder.mjs && tsc --noEmit && vite build",
     "desktop": "tauri",
+    "tauri": "tauri",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
