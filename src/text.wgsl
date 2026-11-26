@@ -51,10 +51,15 @@ fn text_pattern(p: vec2f, style: u32, phase: f32) -> f32 {
         return glyph_line(line,vec2f(0.5+q.x/width,(fract(row)-0.12)/0.76));
     }
     if mode==1u {
-        let height=min(0.13*size,0.36/f32(lines))*(0.8+spacing*0.4);
-        let row=(q.y-0.42)/height+f32(lines);
-        if row<0.0 || row>=f32(lines) { return 0.0; }
-        return glyph_line(u32(row),vec2f(fract(q.x-phase+floor(row)*0.17),(fract(row)-0.12)/0.76));
+        let height=min(0.13*size,0.36)*(0.8+spacing*0.4);
+        let v=(q.y-0.42)/height+0.5;
+        if v<0.0 || v>1.0 { return 0.0; }
+        let gap=mix(0.08,0.18,spacing);
+        let period=max(f32(lines),1.0);
+        let t=fract(q.x/period-phase)*period;
+        let line=min(u32(floor(t)),lines-1u);
+        let local=fract(t);
+        return glyph_line(line,vec2f(local/(1.0-gap),(v-0.12)/0.76));
     }
     if mode==3u {
         let scroll=fract(q.y+0.5+phase);
@@ -78,9 +83,11 @@ fn text_pattern(p: vec2f, style: u32, phase: f32) -> f32 {
             if style==20u { v.x=abs(v.x)-0.31; }
             if style!=9u { v.y=min(v.y-0.15,0.0); }
             let radius=length(v);
-            let angle=atan2(v.y,v.x);
+            // Screen y grows downward, so +atan2 walks the arc backwards.
+            var u=-atan2(v.y,v.x)/6.2831853;
+            if style==20u && radial.x<0.0 { u=-u; }
             gate=smoothstep(inner-0.03,inner,radius)*(1.0-smoothstep(0.47,0.58,radius));
-            q=vec2f(angle/6.2831853,radius-0.5);
+            q=vec2f(u,radius-0.5);
         }
         case 6u, 23u, 28u: {
             q=rotate_text(q,1.5707963);

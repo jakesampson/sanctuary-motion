@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { type TuneSettings, type TuneSpec } from './tune';
 
 export type RGB = [number, number, number];
@@ -7,6 +7,7 @@ type Ramp = [RGB, RGB, RGB, RGB];
 
 export type ColorSettings = {
   mode: number; glow: RGB | null; tint: RGB; amount: number; gradient: Ramp; layout: number;
+  slide: number; midStop: number; glowStop: number; glowTone: number; darkness: number;
 };
 export type AnimationSettings = {
   cycles: number; movement: number; scale: number; shiftX: number; shiftY: number;
@@ -22,6 +23,7 @@ const ramp = (a: string, b: string, c: string, d: string): Ramp => [fromHex(a), 
 export const initialColor: ColorSettings = {
   mode: 0, glow: null, tint: [255, 174, 110], amount: 1,
   gradient: [[168, 41, 113], [112, 62, 172], [54, 120, 204], [132, 225, 241]], layout: 0,
+  slide: 0.5, midStop: 0.35, glowStop: 0.7, glowTone: 1, darkness: 0,
 };
 export const initialAnimation: AnimationSettings = {
   cycles: 1, movement: 1, scale: 1, shiftX: 0, shiftY: 0, stopFps: 0, ease: 0,
@@ -97,14 +99,32 @@ export function ResetControl({ name, onReset, disabled }: {
   name: string; onReset: () => void; disabled?: boolean;
 }) {
   return <button type="button" className="reset-control" aria-label={'Reset ' + name} title={'Reset ' + name}
-    disabled={disabled} onClick={event => { event.preventDefault(); event.stopPropagation(); onReset(); }}>↺</button>;
+    disabled={disabled}
+    onPointerDown={event => event.stopPropagation()}
+    onMouseDown={event => event.stopPropagation()}
+    onClick={event => { event.preventDefault(); event.stopPropagation(); onReset(); }}>↺</button>;
+}
+
+export function CollapsibleSection({ title, name, onReset, children }: {
+  title: string; name: string; onReset: () => void; children: ReactNode;
+}) {
+  return <div className="collapsible-section">
+    <details>
+      <summary>{title}</summary>
+      {children}
+    </details>
+    <ResetControl name={name} onReset={onReset} />
+  </div>;
 }
 
 export function RangeControl({ name, value, min, max, step = 1, label, defaultValue, onChange }: {
   name: string; value: number; min: number; max: number; step?: number; label: string;
   defaultValue?: number; onChange: (value: number) => void;
 }) {
-  const reset = defaultValue == null ? undefined : () => onChange(defaultValue);
+  const reset = defaultValue == null ? undefined : (event: { stopPropagation(): void }) => {
+    event.stopPropagation();
+    onChange(defaultValue);
+  };
   return <label className="range-control" onDoubleClick={reset}>
     <span>{name}<output aria-hidden="true">{label}</output></span>
     <input aria-label={name} aria-valuetext={label} type="range" value={value} min={min} max={max} step={step}
@@ -132,7 +152,7 @@ export function TunePanel({ title, spec, value, onChange }: {
   };
   const defaults = spec.controls.map(control => control.value);
   const motionDefaults = spec.controls.map(control => control.motion ?? 0);
-  const resetSection = () => onChange({ values: defaults, motions: motionDefaults, auto: false });
+  const resetSection = () => onChange({ ...value, values: defaults, motions });
   const resetMotion = () => onChange({ ...value, values, motions: motionDefaults, auto: false });
   return <div className="tune-panel">
     <div className="card-heading">
@@ -144,21 +164,21 @@ export function TunePanel({ title, spec, value, onChange }: {
         min={control.min} max={control.max} step={control.step} defaultValue={control.value}
         label={Number.isInteger(control.step) && control.step >= 1 ? String(values[index]) : percent((values[index]-control.min)/Math.max(0.0001, control.max-control.min))}
         onChange={next => setValue(index, next)} />)}
-    {spec.auto && <details>
-      <summary>Control motion<ResetControl name="control motion" onReset={resetMotion} /></summary>
+    {spec.auto && <CollapsibleSection title="Control motion" name="control motion" onReset={resetMotion}>
       <label className="toggle"><input type="checkbox" checked={value.auto}
         onChange={event => onChange({ ...value, values, motions, auto: event.target.checked })} /> Let these controls move on their own</label>
       {spec.controls.map((control, index) => control.motion == null ? null :
         <RangeControl key={control.label + '-motion'} name={control.label + ' motion'} value={motions[index]}
           min={0} max={1} step={0.01} defaultValue={control.motion ?? 0} label={percent(motions[index])}
           onChange={next => setMotion(index, next)} />)}
-    </details>}
+    </CollapsibleSection>}
   </div>;
 }
 
-export function ColorPanel({ colors, color, onChange }: {
+export function ColorPanel({ colors, color: colorIn, onChange }: {
   colors: Palette; color: ColorSettings; onChange: (colors: Palette, color: ColorSettings) => void;
 }) {
+  const color: ColorSettings = { ...initialColor, ...colorIn };
   const [saved, setSaved] = useState(readPalettes);
   const [status, setStatus] = useState('');
   const active: Ramp = [colors[0], colors[1], color.glow ?? colors[2], colors[2]];
@@ -173,10 +193,19 @@ export function ColorPanel({ colors, color, onChange }: {
     } catch { setStatus('Could not save this palette.'); }
   };
   const seaGlass: Palette = [[8, 12, 27], [39, 96, 132], [116, 225, 186]];
+  const resetVisible = () => {
+    if (color.mode === 1) update({ tint: initialColor.tint, amount: initialColor.amount });
+    else if (color.mode === 2) update({ gradient: initialColor.gradient, layout: initialColor.layout });
+    else onChange(seaGlass, {
+      ...color, glow: initialColor.glow,
+      slide: initialColor.slide, midStop: initialColor.midStop, glowStop: initialColor.glowStop,
+      glowTone: initialColor.glowTone, darkness: initialColor.darkness,
+    });
+  };
   return <div className="step-content">
     <div className="card-heading">
       <h2>Color</h2>
-      <ResetControl name="color" onReset={() => onChange(seaGlass, initialColor)} />
+      <ResetControl name="color" onReset={resetVisible} />
     </div>
     <div className="segments" aria-label="Color mode">
       {['Palette', 'Tint', 'Gradient map'].map((name, mode) => <button key={name}
@@ -196,6 +225,20 @@ export function ColorPanel({ colors, color, onChange }: {
       {saved.length > 0 && <RampChoices entries={saved.map((value, i) => ['Saved ' + (i + 1), value])} active={active} select={select} />}
       <div><button onClick={save} disabled={saved.length >= 12 || saved.some(value => same(value, active))}>Save palette locally</button>
         {status && <p className="gallery-status" role="status">{status}</p>}</div>
+      <RangeControl name="Slide" value={color.slide} min={0} max={1} step={0.01} defaultValue={initialColor.slide}
+        label={percent(color.slide)} onChange={slide => update({ slide })} />
+      <CollapsibleSection title="Where the colors fall" name="where the colors fall" onReset={() => update({
+        midStop: initialColor.midStop, glowStop: initialColor.glowStop,
+      })}>
+        <RangeControl name="Mid stop" value={color.midStop} min={0.05} max={0.9} step={0.01} defaultValue={initialColor.midStop}
+          label={percent(color.midStop)} onChange={midStop => update({ midStop })} />
+        <RangeControl name="Glow stop" value={color.glowStop} min={0.1} max={0.98} step={0.01} defaultValue={initialColor.glowStop}
+          label={percent(color.glowStop)} onChange={glowStop => update({ glowStop })} />
+      </CollapsibleSection>
+      <RangeControl name="Glow" value={color.glowTone} min={0} max={1} step={0.01} defaultValue={initialColor.glowTone}
+        label={percent(color.glowTone)} onChange={glowTone => update({ glowTone })} />
+      <RangeControl name="Darkness" value={color.darkness} min={0} max={1} step={0.01} defaultValue={initialColor.darkness}
+        label={percent(color.darkness)} onChange={darkness => update({ darkness })} />
     </>}
     {color.mode === 1 && <>
       <div className="palettes">
@@ -233,7 +276,11 @@ export function MotionPanel({ animation, duration, motion, onAnimation, onDurati
   return <div className="step-content">
     <div className="card-heading">
       <h2>Motion</h2>
-      <ResetControl name="motion" onReset={() => { onAnimation(initialAnimation); onDuration(defaultDuration); onMotion(defaultMotion); }} />
+      <ResetControl name="motion" onReset={() => {
+        onAnimation({ ...animation, cycles: initialAnimation.cycles, movement: initialAnimation.movement });
+        onDuration(defaultDuration);
+        onMotion(defaultMotion);
+      }} />
     </div>
     <div className="segments" aria-label="Motion preset">
       {['Quiet', 'Gentle', 'Full'].map((label, index) => <button key={label} aria-pressed={motion === index} onClick={() => onMotion(index)}>{label}</button>)}
@@ -244,10 +291,10 @@ export function MotionPanel({ animation, duration, motion, onAnimation, onDurati
     <RangeControl name="Duration" value={duration} min={1} max={60} defaultValue={defaultDuration} label={duration + ' s'} onChange={onDuration} />
     <RangeControl name="Movement" value={animation.movement} min={0} max={2} step={0.01} defaultValue={initialAnimation.movement}
       label={percent(animation.movement)} onChange={movement => update({ movement })} />
-    <details><summary>Framing and timing<ResetControl name="framing and timing" onReset={() => update({
+    <CollapsibleSection title="Framing and timing" name="framing and timing" onReset={() => update({
       scale: initialAnimation.scale, shiftX: initialAnimation.shiftX, shiftY: initialAnimation.shiftY,
       stopFps: initialAnimation.stopFps, ease: initialAnimation.ease,
-    })} /></summary>
+    })}>
       <RangeControl name="Scale" value={animation.scale} min={0.5} max={3} step={0.01} defaultValue={initialAnimation.scale}
         label={percent(animation.scale)} onChange={scale => update({ scale })} />
       <RangeControl name="Horizontal shift" value={animation.shiftX} min={-0.5} max={0.5} step={0.01} defaultValue={initialAnimation.shiftX}
@@ -258,6 +305,6 @@ export function MotionPanel({ animation, duration, motion, onAnimation, onDurati
         label={animation.stopFps === 0 ? 'Off' : animation.stopFps + ' fps'} onChange={stopFps => update({ stopFps })} />
       <RangeControl name="Eased motion" value={animation.ease} min={0} max={1} step={0.01} defaultValue={initialAnimation.ease}
         label={percent(animation.ease)} onChange={ease => update({ ease })} />
-    </details>
+    </CollapsibleSection>
   </div>;
 }

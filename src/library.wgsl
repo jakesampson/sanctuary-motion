@@ -61,6 +61,14 @@ fn opening_mask(p: vec2f, size: f32, roundness: f32) -> vec2f {
     return vec2f(fill*0.72+band(d,0.05), fill*0.4+band(d,0.012));
 }
 
+fn frame_glow(p: vec2f, half: vec2f, radius: f32, thick: f32, soft: f32) -> vec2f {
+    let d = box_distance(p, max(half, vec2f(0.04)), radius);
+    let depth = max(0.0, -d);
+    let wash = exp(-depth/max(0.012, thick));
+    let lip = exp(-pow(d/max(0.006, mix(0.01, 0.05, soft)), 2.0));
+    return vec2f(wash*0.86+lip*0.4, lip+wash*0.5);
+}
+
 fn grid_cells(p: vec2f, cols: f32, rows: f32, gap: f32, seed: f32, phase: f32) -> vec2f {
     let grid = p*vec2f(max(2.0,cols), max(2.0,rows))+0.5;
     let cell = floor(grid);
@@ -115,50 +123,72 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let body = smoothstep(0.22,0.82,fog)*0.84*bandh;
             return vec2f(body, smoothstep(0.40,0.82,wisps)*body*t(2u));
         }
-        case 5u: { // Light Rays
-            return radial_rays(p-vec2f(0.0, t(1u)*0.55), t(0u), t(2u), 0.62, seed, drift);
+        case 5u: { // Light Rays — same family as Rays: fan from a high source
+            return radial_rays(p-vec2f(0.0, mix(-0.55, 0.15, t(1u)*0.5+0.5)), t(0u), t(2u), 0.55, seed, drift);
         }
-        case 6u: { // Bar Array
+        case 6u: { // Bar Array — vertical LED columns with row gating
+            let spacing = mix(6.0, 36.0, t(5u));
+            let x = p.x*spacing + drift.x*t(3u)*6.0;
+            let id = floor(x);
+            let f = x-id-0.5;
+            let bars = exp(-f*f*mix(10.0, 90.0, t(1u)));
             let rows = max(1.0, round(t(6u)));
-            let spacing = mix(8.0, 48.0, t(5u));
-            let h = mix(0.08, 0.46, t(8u));
+            let h = mix(0.22, 1.05, t(8u));
+            let rowm = 1.0-smoothstep(0.42, 0.5, abs(fract(p.y*rows+0.5)-0.5));
+            let vert = pow(clamp(1.0-abs(p.y)/max(0.12,h), 0.0, 1.0), 1.4);
             let pat = round(t(7u));
-            let col = p.x*spacing + select(0.0, 12.0*sin(p.y*3.0+time), pat<0.5) + drift.x*t(3u)*8.0;
-            let bars = pow(0.5+0.5*cos(col*3.14159), mix(2.0,14.0,t(1u)));
-            let rowm = 1.0-smoothstep(h, h+0.08, abs(fract(p.y*rows+0.5)-0.5)*2.0);
-            let strobe = select(1.0, step(0.45, fract(time*4.0+hash(floor(p*spacing)))), pat>1.5);
-            let haze = mist(p*3.0+seed)*t(2u);
-            let body = (bars*rowm*strobe*mix(0.4,1.5,t(0u))+haze);
-            return vec2f(body, body*t(1u)+t(4u)*hash(floor(p*90.0)+seed)*0.35);
-        }
-        case 7u: { // Laser Planes
-            let n = max(1.0, round(t(5u)));
-            let origin = vec2f(0.0, mix(-0.55, 0.2, t(8u)));
-            let v = p-origin;
-            let ray = pow(0.5+0.5*cos(atan2(v.y,v.x)*n*2.0+drift.y*t(6u)+seed), mix(3.0,18.0,1.0-t(7u)));
-            let taper = exp(-length(v)*1.6)*(0.4+t(1u)*mist(v*5.0));
-            return vec2f(taper*(0.2+ray)*t(0u), taper*ray*t(2u));
-        }
-        case 8u: { // Planet Rise
-            let size = mix(0.18, 0.48, t(5u));
-            let v = vec2f(p.x, p.y-mix(-0.15,0.45,t(8u)));
-            let d = length(v)-size;
-            let rim = emitter(d, t(2u));
-            let atmo = band(d-mix(0.02,0.12,t(6u)), 0.08)*t(6u);
-            let rings = band(abs(v.y)-size*0.15, mix(0.01,0.05,t(7u)))*t(7u)*step(abs(v.x), size*1.4);
-            return (rim+vec2f(atmo,atmo)+vec2f(rings*0.4,rings))*mix(0.45,1.4,t(0u));
-        }
-        case 9u: { // Light Corridor
-            var light = vec2f(0);
-            let frames = 7.0;
-            for (var i=0u; i<7u; i++) {
-                let index = f32(i);
-                let size = 0.33*pow(0.75,index)*(0.8+t(6u)*0.5);
-                let v = p+vec2f(0,0.014*index);
-                let d = box_distance(v,vec2f(size*mix(0.8,1.6,t(7u)),size), mix(0.0,0.04,t(5u)));
-                light = max(light,emitter(d,0.91-index*0.065)*(0.95-index*0.075));
+            let chase = select(1.0, 0.35+0.65*step(0.5, fract(id*0.17+time*1.8)), pat>0.5);
+            let haze = mist(p*2.4+seed)*t(2u)*0.35;
+            let floor_y = 0.32;
+            var body = bars*vert*rowm*chase*mix(0.45,1.35,t(0u))+haze;
+            if p.y > floor_y {
+                let fy = floor_y*2.0-p.y;
+                let vert2 = pow(clamp(1.0-abs(fy)/max(0.12,h), 0.0, 1.0), 1.4);
+                let bounce = bars*vert2*chase*exp(-(p.y-floor_y)*6.0)*0.45;
+                body = bounce + haze*0.2;
             }
-            return light*mix(0.5,1.4,t(0u))+vec2f(0.0, t(2u)*band(p.y+0.45,0.08));
+            return vec2f(body, body*0.85+t(4u)*hash(vec2f(id, floor(p.y*18.0)))*bars*0.4);
+        }
+        case 7u: { // Laser Planes — discrete sheets fanning from one origin through haze
+            let n = max(2.0, round(t(5u)));
+            let origin = vec2f(mix(-0.62, 0.62, t(8u)*0.5+0.5), mix(-0.48, 0.22, t(6u)));
+            var light = vec2f(0.0);
+            for (var i=0u; i<10u; i++) {
+                if f32(i) >= n { break; }
+                let k = f32(i)-(n-1.0)*0.5;
+                let v = rotate2(p-origin, k*mix(6.0, 22.0, t(6u))+time*t(3u)*8.0);
+                let sheet = exp(-abs(v.x)*mix(8.0, 36.0, t(7u)));
+                let run = smoothstep(-1.1, 0.7, v.y)*exp(-abs(v.y)*0.28);
+                light += vec2f(sheet*run, sheet*sheet*run)*(0.5+0.5*t(0u));
+            }
+            let haze = mist(p*3.2+drift+seed)*t(1u);
+            return light*(0.55+haze*0.7)+vec2f(haze*0.18, t(2u)*0.22);
+        }
+        case 8u: { // Planet Rise — huge dark globe under the frame, lit limb + sky rings
+            let rad = mix(0.82, 1.38, t(5u));
+            let cy = mix(0.92, 0.42, t(8u));
+            let v = vec2f(p.x, p.y-cy);
+            let d = length(v)-rad;
+            let planet = 1.0-smoothstep(-0.012, 0.004, d);
+            let limb = exp(-abs(d)*mix(10.0, 36.0, 1.0-t(6u)));
+            let glare = exp(-max(d,0.0)*mix(4.0, 14.0, 1.0-t(2u)))*(1.0-planet*0.92);
+            var rings = 0.0;
+            for (var i=0u; i<5u; i++) {
+                let rr = rad+0.018+f32(i)*mix(0.012, 0.045, t(7u));
+                rings += band(length(v)-rr, mix(0.003, 0.014, t(7u)))*step(0.0, d);
+            }
+            let sky = glare+rings*t(7u);
+            return vec2f(sky*0.75+limb*0.35, sky+limb)*mix(0.5, 1.35, t(0u));
+        }
+        case 9u: { // Light Corridor — nested rounded frames receding to a point
+            var light = vec2f(0.0);
+            for (var i=0u; i<8u; i++) {
+                let index = f32(i);
+                let size = mix(0.16, 0.52, t(6u))*pow(0.72, index);
+                let d = box_distance(p, vec2f(size*mix(1.05, 1.65, t(7u)), size), mix(0.0, 0.05, t(5u)));
+                light = max(light, vec2f(band(d, 0.02), band(d, 0.006))*(1.0-index*0.08));
+            }
+            return light*mix(0.5, 1.4, t(0u))+vec2f(0.0, t(2u)*band(p.y+0.42, 0.1));
         }
         case 10u: { // Glass Stack
             var output = vec2f(0);
@@ -174,66 +204,93 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             }
             return output;
         }
-        case 11u: { // Long Exposure
+        case 11u: { // Long Exposure — streaks pulled along one heading
             let v = rotate2(p, t(1u));
-            let streaks = t(0u);
-            let d = v.x + 0.14*sin(v.y*streaks+drift.y*t(4u));
-            return emitter(d, mix(0.2,0.9,t(2u))) * vec2f(1.0, mix(0.4,1.2,t(2u)));
+            let n = max(0.4, t(0u));
+            let pulled = pow(0.5+0.5*cos(v.x*n + sin(v.y*3.0+drift.y)*t(4u)*2.0), mix(2.5, 12.0, t(2u)));
+            let span = smoothstep(-0.85, 0.2, 0.65-abs(v.y)*0.45);
+            return vec2f(pulled*span, pulled*span);
         }
-        case 12u: { // Glass Fins
+        case 12u: { // Glass Fins — perspective row of turning glass blades
             var output = vec2f(0);
             let fins = clamp(round(t(5u)), 3.0, 13.0);
             for (var n=0u; n<13u; n++) {
                 if f32(n) >= fins { break; }
                 let i=f32(n)-(fins-1.0)*0.5;
-                var v=p-vec2f(i*mix(0.04,0.12,t(8u)),0);
-                v.x += v.y*0.16;
-                let size=vec2f(mix(0.008,0.04,t(6u)), mix(0.12,0.36,t(7u)));
-                let d=box_distance(v,size,0.008);
-                output=max(output,vec2f(1.0-smoothstep(-0.02,0.014,d),band(d,0.02))*mix(0.4,1.3,t(0u)));
+                let z = 0.62+abs(i)*0.09;
+                let turn = sin(time*0.85+i*0.7)*1.2;
+                let halfw = mix(0.01, 0.048, t(6u))*(abs(cos(turn))+0.18)/z;
+                let halfh = mix(0.16, 0.4, t(7u))/z;
+                let v = p-vec2f(i*mix(0.07,0.2,t(8u))/z, 0.02/z);
+                let d=box_distance(v,vec2f(halfw,halfh),0.006);
+                let facet = 0.28+0.72*pow(abs(sin(turn*2.0+v.y*10.0)),2.0);
+                let fill = 1.0-smoothstep(-0.008,0.012,d);
+                output=max(output,vec2f(fill*0.55+band(d,0.022), fill*0.25+band(d,0.01))*facet);
             }
-            return output+vec2f(t(2u)*0.12, t(1u)*0.2);
+            let floorl = exp(-abs(p.y-0.38)*7.0)*smoothstep(0.12,0.42,p.y)*t(2u)*0.35;
+            return output*mix(0.5,1.4,t(0u))+vec2f(floorl, t(1u)*0.22+floorl);
         }
-        case 13u: { // Glass Torus
-            let radius = mix(0.16, 0.42, t(5u));
-            let thick = mix(0.02, 0.12, t(6u));
-            let twist = t(7u);
-            let wave = 0.034*sin(a*twist+drift.y);
-            let rim = r-radius-wave*t(8u);
-            let facet = 0.25+0.75*pow(cos(a*3.0+drift.x),2.0);
-            return vec2f(band(rim,thick*1.6),band(rim,thick*0.35))*facet*mix(0.5,1.4,t(0u));
+        case 13u: { // Glass Torus — tilted glass ring with faceted rim
+            let q = p*vec2f(1.0, mix(1.05, 1.55, t(8u)));
+            let radius = mix(0.16, 0.4, t(5u));
+            let thick = mix(0.028, 0.13, t(6u));
+            let d = abs(length(q)-radius)-thick*0.38;
+            let twist = 0.3+0.7*pow(0.5+0.5*cos(atan2(q.y,q.x)*max(2.0,t(7u))+time), 2.0);
+            let fill = 1.0-smoothstep(-0.008, 0.014, d);
+            return vec2f(fill*0.45+band(d,thick)*twist, fill*0.2+band(d,0.012))*mix(0.5,1.4,t(0u));
         }
-        case 14u: { // Hanging Blades
+        case 14u: { // Hanging Blades — perspective row of tall blades catching a chase
             var output = vec2f(0);
             let blades = clamp(round(t(0u)), 3.0, 14.0);
             for (var n=0u; n<14u; n++) {
                 if f32(n) >= blades { break; }
-                let i=f32(n)-(blades-1.0)*0.5;
-                let chase = sin(time*max(0.5,t(3u))+i)*t(1u)*0.08;
-                let v = p.yx-vec2f(i*0.065,i*0.028+chase);
-                let size=vec2f(0.015, mix(0.12,0.38,t(4u))-abs(i)*0.02);
-                let d=box_distance(v,size,0.009);
-                let stripe = 0.5+0.5*cos(v.y*18.0)*t(2u);
-                output=max(output,emitter(d,0.8)*stripe);
+                let i=f32(n);
+                let z = mix(0.42, 1.45, i/max(1.0, blades-1.0));
+                let chase = sin(time*(0.7+t(3u))+i)*t(1u)*0.05;
+                let v = p-vec2f((i-(blades-1.0)*0.5)*mix(0.07,0.16,t(1u))/z, -0.04/z+chase);
+                let size=vec2f(mix(0.01,0.028,t(2u))/z, mix(0.16,0.48,t(4u))/z);
+                let d=box_distance(v,size,0.006/z);
+                let stripe = 0.5+0.5*cos(v.y*14.0*z)*t(2u);
+                output=max(output,emitter(d,0.9)*stripe*(1.1-z*0.25));
             }
             return output;
         }
-        case 15u: { // Light Slab
-            let d=box_distance(p-vec2f(0, mix(-0.1,0.2,t(3u)+1.0)), vec2f(mix(0.04,0.22,t(0u)), mix(0.12,0.42,t(1u))), 0.007);
-            let fill=1.0-smoothstep(-0.015,0.008,d);
-            return (emitter(d,t(2u))+vec2f(fill*0.82,fill*t(4u)*0.5));
+        case 15u: { // Light Slab — solid panel with floor reflection
+            let cy = mix(-0.28, 0.18, t(3u)+1.0);
+            let half = vec2f(mix(0.06, 0.28, t(0u)), mix(0.08, 0.32, t(1u)));
+            let d=box_distance(p-vec2f(0.0, cy), half, 0.012);
+            let fill=1.0-smoothstep(-0.01,0.006,d);
+            let glow=exp(-max(d,0.0)*mix(8.0, 28.0, 1.0-t(2u)))*t(2u);
+            var refl = 0.0;
+            if p.y < -0.35 {
+                let ry = -0.7-p.y;
+                let d2=box_distance(vec2f(p.x, ry)-vec2f(0.0, cy), half, 0.012);
+                refl = exp(-max(d2,0.0)*10.0)*exp((-0.35-p.y)*3.0)*t(4u);
+            }
+            return vec2f(fill*0.8+glow+refl, fill*t(4u)+glow+refl);
         }
-        case 16u: { // Floating Ellipse
-            let v = (p+vec2f(0, -t(2u)*0.35))*vec2f(1.0/mix(0.2,1.4,t(0u)), 1.0/mix(0.05,1.0,t(1u)));
-            let d=(length(v)-0.31)/2.0;
-            let fill=1.0-smoothstep(-0.02,0.01,d);
-            return vec2f(fill*0.7+band(d,0.04), fill*t(3u)+band(d,0.01));
+        case 16u: { // Floating Ellipse — filled disc + outer pool
+            let c = vec2f(0.0, mix(-0.25, 0.28, t(2u)*0.5+0.5));
+            let q = (p-c)/vec2f(mix(0.18, 0.72, t(0u)), mix(0.06, 0.42, t(1u)));
+            let d = (length(q)-1.0)*mix(0.06, 0.42, t(1u));
+            let disc = 1.0-smoothstep(-0.006, 0.006, d);
+            let pool = exp(-max(d,0.0)*mix(6.0, 22.0, 1.0-t(3u)))*t(3u);
+            return vec2f(disc*0.92+pool*(1.0-disc), disc*t(3u)+pool);
         }
-        case 17u: { // Bottom Glow
-            let h = mix(0.04, 0.55, t(0u));
-            let soft = mix(0.04, 0.22, t(1u));
-            let breathe = 0.85+0.15*sin(time*2.0)*t(2u);
-            return vec2f(band(1.0-uv.y-0.05, h)*breathe, band(1.0-uv.y, soft)*breathe);
+        case 17u: { // Bottom Glow · Height / Softness / Breathe / Sway / Edge
+            let edge = u32(clamp(t(4u)+0.5, 0.0, 3.0));
+            let sway = sin(time*1.35+seed)*t(3u)*0.05;
+            var dist = 1.0-uv.y;
+            if edge==0u { dist = uv.y; }
+            if edge==1u { dist = 1.0-uv.x; }
+            if edge==3u { dist = uv.x; }
+            dist = max(0.0, dist+sway);
+            let reach = mix(0.05, 0.62, t(0u));
+            let soft = mix(0.018, 0.16, t(1u));
+            let breathe = 0.82+0.18*sin(time*2.1)*t(2u);
+            let wash = exp(-dist/max(0.02, reach));
+            let lip = exp(-pow(dist/max(0.008, soft), 2.0));
+            return vec2f(wash*0.9+lip*0.35, lip+wash*0.45)*breathe;
         }
         case 18u: { // Linear Drift
             let dir = rotate2(q, t(0u));
@@ -241,39 +298,55 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let contrast = mix(0.6, 1.6, t(4u));
             return vec2f(pow(ramp,contrast)*0.82, pow(ramp,contrast+0.6)*0.60);
         }
-        case 19u: { // Edge Light
-            let thick = t(0u);
-            let d=min(0.5-abs(q.x),0.5-abs(q.y));
-            return vec2f(band(d, mix(0.04,0.18,t(1u))), band(d, mix(0.01,0.05,1.0-t(1u)))) * (0.7+t(2u)*0.4);
+        case 19u: { // Edge Light · Thickness / Softness / Pulse / Fog
+            let pulse = 0.78+0.22*sin(time*2.4)*t(2u);
+            let half = vec2f(max(aspect,1.0), max(1.0,1.0/aspect))*0.49;
+            let thick = mix(0.03, 0.26, t(0u));
+            let fog = mist(p*3.2+drift*0.2+seed)*t(3u);
+            return frame_glow(p, half, mix(0.03, 0.14, t(1u)), thick, t(1u))*pulse + vec2f(fog*0.12, fog*0.08);
         }
-        case 20u: { // Mesh
-            let n = max(3.0, t(0u));
-            var mesh = 0.0;
+        case 20u: { // Mesh · inverse-distance color points
+            let n = clamp(t(0u), 3.0, 8.0);
+            let soft = max(0.05, t(1u));
+            var num = 0.0;
+            var den = 0.0;
             for (var i=0u; i<8u; i++) {
                 if f32(i) >= n { break; }
                 let k = f32(i);
-                let c = vec2f(cos(k*2.4+seed), sin(k*1.7+seed*1.3))*0.35;
-                mesh += exp(-mix(2.0, 9.0, 1.0-t(1u))*length(p-c-drift*0.08));
+                let c = vec2f(sin(k*2.3+seed)*0.62, cos(k*1.9+seed*1.3)*0.38)
+                    + vec2f(cos(time+k*1.7), sin(time+k*2.2))*0.12*t(1u);
+                let d2 = dot(p-c, p-c);
+                let w = 1.0/(d2*d2*4.0+soft*0.05+0.001);
+                num += w*fract(k*0.618+0.15);
+                den += w;
             }
-            return vec2f(mesh, mesh*mesh*0.81);
+            let mesh = num/max(den, 0.001);
+            return vec2f(clamp(mesh,0.0,1.0), clamp(mesh*mesh,0.0,1.0));
         }
-        case 21u: { // Bloom Bars
+        case 21u: { // Bloom Bars — discrete columns, not a sine grating
             let bars = max(2.0, t(0u));
-            let slat = pow(0.5+0.5*cos(p.x*bars*1.8+time*t(2u)*4.0), mix(2.0,10.0,1.0-t(1u)));
-            return vec2f(slat*0.76, slat*0.9)*band(p.y,0.42);
+            let x = p.x*bars*0.55;
+            let id = floor(x+0.5);
+            let f = x-id;
+            let br = exp(-f*f/mix(0.012, 0.14, t(1u)));
+            let pulse = 0.62+0.38*sin(time*2.0+id*1.7)*t(2u);
+            let fall = mix(0.55, 1.0, smoothstep(-0.55, 0.15, p.y));
+            return vec2f(br*pulse*fall, br*pulse)*exp(-abs(p.y)*0.35);
         }
-        case 22u: { // Halo
-            let radius = t(0u)*0.38;
-            let bands = max(2.0, t(1u));
-            let v = rotate2(p, t(2u));
-            let slat = band(fract((v.y+v.x*0.25)*bands)-0.5, t(3u)*0.18);
-            return vec2f(slat*0.76,slat*0.9)*(1.0-smoothstep(radius-0.05,radius+0.08,r));
+        case 22u: { // Halo — filled disc with interior bands
+            let radius = mix(0.22, 0.52, t(0u)/1.2);
+            let inside = smoothstep(radius*(1.0+t(3u)*0.25), radius*(1.0-t(3u)*0.25), r);
+            let q = rotate2(p, t(2u));
+            let st = pow(0.5+0.5*sin(q.y/max(0.08,radius)*t(1u)*3.14159+time), 2.4);
+            let sh = sqrt(max(0.0, 1.0-r*r/max(0.04, radius*radius)));
+            return vec2f(inside*(0.22+0.78*st)*sh, inside*st*sh);
         }
         case 23u: { // Halo Ring
-            let radius = t(0u)*0.42;
-            let thick = t(1u);
+            let radius = mix(0.18, 0.48, t(0u)/1.2);
+            let thick = max(0.012, t(1u));
             let d = r-radius;
-            return vec2f(band(d, thick*1.4)+t(2u)*band(d+thick, 0.12), band(d, thick*0.35));
+            let sw = 0.55+0.45*pow(0.5+0.5*cos(a-time), 3.0);
+            return vec2f(exp(-d*d/(thick*thick))*sw, exp(-abs(d)*4.0)+t(2u)*exp(-r/max(0.08,radius))*0.4);
         }
         case 24u: { // Eclipse
             let radius = t(0u)*0.42;
@@ -282,38 +355,64 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let diamond = t(2u)*pow(0.5+0.5*cos(a*4.0), 6.0)*exp(-3.0*r);
             return vec2f(band(d,0.10)*step(0.0,d)+corona, band(d,0.008)+diamond);
         }
-        case 25u: { // Cross of Rays
-            let v=p+vec2f(0,0.025);
-            let d=min(box_distance(v,vec2f(mix(0.01,0.05,t(1u)), mix(0.18,0.42,t(0u))),0.006),
-                      box_distance(v+vec2f(0, mix(-0.05,0.16,t(2u))),vec2f(mix(0.12,0.28,t(0u)),0.021),0.005));
-            let spokes=pow(0.5+0.5*cos(a*mix(8.0,28.0,t(3u))+drift.x),7.0)*exp(-6.0*r)*t(3u);
-            return emitter(d,t(2u))+vec2f(spokes*0.67, (1.0-smoothstep(-0.008,0.005,d))*0.64);
+        case 25u: { // Cross of Rays — bright cross opening with shafts through haze
+            let v=p+vec2f(0.0,0.03);
+            let d=min(box_distance(v,vec2f(mix(0.012,0.055,t(1u)), mix(0.2,0.44,t(0u))),0.004),
+                      box_distance(v+vec2f(0.0, mix(-0.02,0.1,t(2u))),vec2f(mix(0.12,0.3,t(0u)), mix(0.012,0.04,t(1u))),0.004));
+            let fill=1.0-smoothstep(-0.005,0.008,d);
+            let glow=exp(-max(d,0.0)*mix(7.0, 26.0, 1.0-t(2u)));
+            let shafts=radial_rays(v, mix(6.0, 22.0, t(3u)), 0.42, 0.72, seed, drift);
+            let haze=mist(p*3.0+seed)*t(2u)*0.25;
+            return vec2f(fill*0.92+glow+haze, fill+glow)+shafts*(0.45+0.55*(1.0-fill));
         }
-        case 26u: { // Silhouette Cross
-            let v=p+vec2f(0,0.025);
-            let d=min(box_distance(v,vec2f(0.024,0.32),0.006), box_distance(v+vec2f(0,0.087),vec2f(0.18,0.021),0.005));
-            let solid=1.0-smoothstep(-0.008,0.005,d);
-            let spokes=pow(0.5+0.5*cos(a*21.0+drift.x),7.0)*exp(-6.0*r)*t(3u);
-            return (emitter(d,t(2u))+vec2f(spokes,spokes*0.34))*(1.0-solid*0.85);
+        case 26u: { // Silhouette Cross — dark cross blocking a radiant field
+            let v=p+vec2f(0.0,0.03);
+            let d=min(box_distance(v,vec2f(mix(0.018,0.045,t(1u)),0.34),0.004),
+                      box_distance(v+vec2f(0.0,0.09),vec2f(0.19, mix(0.016,0.032,t(1u))),0.004));
+            let solid=1.0-smoothstep(-0.006,0.006,d);
+            let rim=exp(-abs(d)*22.0);
+            let field=radial_rays(v, mix(8.0, 24.0, t(3u)), 0.38, 0.65, seed, drift);
+            return (field+vec2f(rim*0.5, rim))*(1.0-solid*0.92)+vec2f(0.0, rim*0.2);
         }
-        case 27u: { // Glass Cross
-            let v=p+vec2f(0,0.025);
-            let d=min(box_distance(v,vec2f(mix(0.016,0.05,t(6u)), mix(0.2,0.38,t(5u))), mix(0.0,0.02,t(10u))),
-                      box_distance(v+vec2f(0,0.08),vec2f(mix(0.12,0.24,t(5u)), mix(0.014,0.04,t(6u))),0.005));
-            return emitter(d,t(0u))*vec2f(0.7,0.5+0.5*sin(p.y*18.0+drift.y));
+        case 27u: { // Glass Cross — thick glass latin cross with faceted rim
+            let v=p+vec2f(0.0,0.04);
+            let d=min(box_distance(v,vec2f(mix(0.02,0.07,t(6u)), mix(0.18,0.4,t(5u))), mix(0.0,0.03,t(10u))),
+                      box_distance(v+vec2f(0.0, mix(0.04,0.12,t(5u)*0.4)),vec2f(mix(0.12,0.28,t(5u)), mix(0.016,0.05,t(6u))), mix(0.0,0.02,t(10u))));
+            let fill=1.0-smoothstep(-0.006,0.012,d);
+            let facet=0.35+0.65*pow(abs(sin(v.x*14.0+v.y*9.0+drift.x)),2.0);
+            return vec2f(fill*0.55*facet+band(d,0.024)*t(2u), fill*0.25+band(d,0.01))*mix(0.5,1.4,t(0u));
         }
-        case 28u: { // Curtain Streaks · Cross
-            let curtain=pow(0.5+0.5*cos(p.x*mix(40.0,160.0,t(0u))), mix(4.0,14.0,t(1u)))*band(p.y,0.33);
-            let v=p+vec2f(0,0.025);
-            let d=min(box_distance(v,vec2f(0.024,0.32),0.006), box_distance(v+vec2f(0,0.087),vec2f(0.18,0.021),0.005));
-            return vec2f(curtain*0.58,curtain*0.32)+emitter(d,0.77)*t(4u);
+        case 28u: { // Curtain Streaks · Cross — hanging strands with a cross in the wash
+            let curtain=pow(0.5+0.5*cos(p.x*mix(18.0,90.0,t(0u))+sin(p.y*3.0)*2.0), mix(3.0,12.0,t(1u)));
+            let fall=smoothstep(-0.55,0.35,p.y);
+            let v=p+vec2f(0.0,0.03);
+            let d=min(box_distance(v,vec2f(0.022, mix(0.16,0.34,t(3u))),0.004),
+                      box_distance(v+vec2f(0.0,0.08),vec2f(mix(0.1,0.22,t(3u)),0.02),0.004));
+            let shape=(1.0-smoothstep(-0.005,0.008,d))*t(4u);
+            return vec2f(curtain*fall*0.7+shape, curtain*fall+shape);
         }
-        case 29u: { // Light Threads
-            return vec2f(band(p.y+0.11*sin(p.x*6.0+drift.x), mix(0.08,0.3,t(7u)))*0.2, drifting_lights(p, time, seed, true)*t(0u));
+        case 29u: { // Light Threads — hanging vertical fibers at several depths
+            let n = mix(10.0, 46.0, t(0u));
+            var body = 0.0;
+            for (var layer=0u; layer<4u; layer++) {
+                let z = f32(layer);
+                let dens = n*(0.55+0.18*z);
+                let x = p.x*dens + sin(time*(0.6+z*0.25)+z)*t(1u)*0.08 + z*0.07;
+                let id = floor(x);
+                let f = fract(x)-0.5;
+                let h = hash(vec2f(id, z+seed));
+                let breath = 0.45+0.55*pow(0.5+0.5*sin(time*2.2+h*20.0), 2.0)*t(1u);
+                let thread = exp(-f*f*mix(28.0, 140.0, h))*breath*(0.35+0.65*h);
+                let glint = exp(-f*f*400.0)*hash(vec2f(id, floor(p.y*40.0+time*8.0)))*t(1u);
+                body += (thread+glint)*smoothstep(-0.62, 0.2, p.y);
+            }
+            return vec2f(body*0.55, body);
         }
-        case 30u: { // Snow Glint
-            let fine=drifting_lights(p, time+0.4,seed,true)*t(0u);
-            return vec2f(band(q.y-0.45,0.13)*t(1u), fine+drifting_lights(p+drift*0.04,time,seed+3.0,true)*t(3u));
+        case 30u: { // Snow Glint — low winter sun on a field of flashing crystals
+            let ground = smoothstep(-0.2, 0.55, p.y);
+            let sun = t(1u)*exp(-p.x*p.x*2.8)*exp(-abs(p.y+0.02)*3.5);
+            let glints = glitter_field(p+vec2f(time*0.03, 0.0), t(0u)*22.0, 0.35, 0.9, time, seed);
+            return vec2f(sun*0.5+glints.x*ground, sun+glints.y*ground);
         }
         case 31u: { // Embers & Snow
             let embers=drifting_lights(p*0.9, time*mix(0.4,2.2,t(3u)), seed, false)*t(0u);
@@ -339,36 +438,71 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let fold = 0.6+0.4*sin(p.y*t(3u)+time)*t(4u);
             return vec2f(mask*fold, mask*fold);
         }
-        case 35u: { // Burst Fans
-            let origin = vec2f(t(1u)*0.45, 0.42);
-            return radial_rays(p-origin, t(0u)*0.12, 1.0-t(2u), t(3u), seed, drift)*vec2f(1.0, 0.7+t(4u));
+        case 35u: { // Burst Fans — sprays from below the frame
+            let origin = vec2f(0.0, mix(0.38, 0.72, t(1u)));
+            let q = p-origin;
+            let ang = atan2(q.x, -q.y);
+            let u = ang*t(0u)*0.12;
+            let id = floor(u);
+            let f = fract(u)-0.5;
+            let d = length(q);
+            let head = fract(hash(vec2f(id, seed))+time*0.15);
+            let bandv = smoothstep(head-0.25, head, d)*smoothstep(head+0.05, head, d);
+            let ray = exp(-f*f*mix(20.0, 80.0, t(3u)))*step(0.0, -q.y+0.2);
+            return vec2f(ray*bandv, ray*bandv)*(0.6+t(4u))+radial_rays(q, t(0u)*0.08, 0.9, 0.4, seed, drift)*0.25;
         }
-        case 36u: { // Wave Slats
+        case 36u: { // Wave Slats — stacked bars riding a travelling wave
             let slats = max(4.0, t(0u));
-            let waves = t(1u);
-            let g = pow(0.5+0.5*cos(p.y*slats + sin(p.x*waves+drift.y)*t(4u)*4.0), mix(2.0, 10.0, t(2u)));
-            let v = rotate2(p, t(3u)*18.0);
-            return vec2f(g,g*0.72)*band(v.x, 0.55);
+            let v = rotate2(p, mix(-28.0, 28.0, t(3u)*0.5+0.5));
+            let y = v.y + 0.1*sin(v.x*max(0.5,t(1u))+drift.y)*t(4u);
+            let g = pow(0.5+0.5*cos(y*slats), mix(3.0, 14.0, t(2u)));
+            return vec2f(g, g*0.78)*smoothstep(0.85, 0.15, abs(v.x));
         }
-        case 37u: { // Arch Rows
+        case 37u: { // Arch Rows — concentric LED arches made of short blocks
             let rows = max(4.0, t(0u));
-            let v=vec2f(p.x,min(p.y-0.12,0.0));
+            let v=vec2f(p.x, min(p.y-0.18, 0.0));
             let radius=length(v);
-            let line=band(fract(radius*rows+drift.x*t(3u)*0.2)-0.5, mix(0.04,0.16,t(1u)));
-            let segments=smoothstep(0.27,0.51,noise(vec2f(atan2(v.y,v.x)*20.0,floor(radius*rows))+seed));
-            return vec2f(line,line*segments)*smoothstep(0.12, mix(0.18,0.4,t(2u)),radius)*t(4u);
+            let ring=fract(radius*rows*0.55+time*t(3u)*0.15);
+            let line=band(ring-0.5, mix(0.03,0.12,t(1u)));
+            let segs=max(4.0, mix(6.0, 28.0, t(2u)));
+            let ang=atan2(v.y,v.x);
+            let block=1.0-smoothstep(mix(0.12,0.42,t(2u)), 0.5, abs(fract(ang*segs)-0.5));
+            return vec2f(line*block, line*block)*smoothstep(0.08, 0.16, radius)*t(4u);
         }
-        case 38u: { // Block Wall
-            let cols = max(4.0, t(0u));
+        case 38u: { // Block Wall — brick LED wall with chase rise
+            let cols = max(6.0, t(0u));
             let rows = max(3.0, t(1u));
-            return grid_cells(p, cols, rows, t(4u), seed, time*t(2u))*vec2f(t(3u)+0.4, 1.0);
+            let brick = p*vec2f(cols, rows)+vec2f(select(0.0, 0.5, fract(floor(p.y*rows)*0.5+0.25)>0.5), 0.0);
+            let cell = floor(brick);
+            let f = fract(brick)-0.5;
+            let rnd = hash(cell+seed);
+            let rise = smoothstep(0.0, 1.0, fract(time*0.25*t(2u)+rnd));
+            let mask = 1.0-smoothstep(0.38-t(4u)*0.1, 0.48, max(abs(f.x), abs(f.y)));
+            let lit = mix(t(3u)*0.3, 1.0, rise*rnd);
+            return vec2f(mask*lit, mask*lit*rnd);
         }
-        case 39u: { // Panel Mosaic
-            return grid_cells(p, t(0u), mix(4.0,18.0,t(3u)), t(1u), seed, time)*vec2f(0.7+t(4u), 0.5+t(2u));
+        case 39u: { // Panel Mosaic — uneven LED columns lighting in groups
+            let cols = max(3.0, t(0u));
+            let x = (p.x+0.5)*cols;
+            let id = floor(x);
+            let h = hash(vec2f(id, seed));
+            let rows = mix(5.0, 18.0, h*0.7+t(3u)*0.3);
+            let gy = (p.y+0.5)*rows;
+            let f = vec2f(fract(x)-0.5, fract(gy)-0.5);
+            let gap = mix(0.06, 0.3, t(1u));
+            let mask = 1.0-smoothstep(0.4-gap*0.25, 0.48, max(abs(f.x), abs(f.y)));
+            let group = step(0.32, hash(vec2f(id, floor(gy*0.3)+seed)));
+            let flicker = mix(1.0, 0.35+0.65*step(0.4, 0.5+0.5*sin(time*5.0+h*12.0)), t(2u));
+            let body = mask*mix(0.2, 1.0, group)*flicker;
+            return vec2f(body, body)*mix(0.5, 1.3, t(4u));
         }
-        case 40u: { // Silk Light
-            let ribbon = emitter(p.y+0.14*sin(p.x*mix(1.0,6.0,t(7u))+drift.y)*t(6u), t(1u));
-            return max(ribbon, emitter(p.y-0.17*sin(p.x*3.0)+0.12, 0.54))*mix(0.5,1.4,t(0u));
+        case 40u: { // Silk Light — folding ribbons filling the frame
+            let folds = mix(1.4, 7.0, t(7u));
+            let warp = 0.22*sin(p.x*folds+drift.y+time*0.35)*t(6u)+0.07*sin(p.x*2.4+p.y*1.2+time);
+            let y = p.y+warp;
+            let layers = pow(0.5+0.5*cos(y*mix(3.5, 16.0, t(1u))), mix(1.8, 7.0, t(1u)));
+            let shade = 0.55+0.45*smoothstep(-0.5, 0.45, p.y);
+            return vec2f(layers*shade, layers*layers)*mix(0.45, 1.35, t(0u));
         }
         case 41u: { // Caustic Depths
             let haze=mist(p*4.0+drift*mix(0.2,1.2,t(3u))+seed);
@@ -379,25 +513,35 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let haze=mist(p*mix(2.0,7.0,t(1u))+drift*0.6+seed);
             return vec2f(haze*mix(0.4,1.2,t(0u)), smoothstep(0.45,0.72,haze)*t(2u));
         }
-        case 43u: { // Volume Rays
-            return radial_rays(p-vec2f(-0.22,-0.48), mix(4.0, 22.0, t(2u)), mix(0.3,1.0,t(1u)), 0.35, seed, drift*t(3u))*mix(0.4,1.5,t(0u));
+        case 43u: { // Volume Rays — shafts falling from above through drifting fog
+            let origin = vec2f(mix(-0.28, 0.28, t(3u)*0.5+0.5), -0.78);
+            let qv = p-origin;
+            let ang = atan2(qv.x, -qv.y);
+            let n = mix(3.0, 18.0, t(2u));
+            let f = fract(ang*n*0.55)-0.5;
+            let shaft = exp(-f*f*mix(18.0, 80.0, t(1u)))*exp(-length(qv)*0.45);
+            let fog = mist(p*2.8+drift+seed)*t(1u);
+            return vec2f(shaft*0.7+fog*0.35, shaft+fog*0.2)*mix(0.4,1.45,t(0u));
         }
-        case 44u: { // Ramp Squares
+        case 44u: { // Ramp Squares — nested rounded square rims, each turning
             var light = vec2f(0);
-            for (var i=0u; i<7u; i++) {
+            let n = mix(3.0, 8.0, t(5u));
+            for (var i=0u; i<8u; i++) {
+                if f32(i) >= n { break; }
                 let index = f32(i);
-                let size = mix(0.12,0.4,t(5u))*pow(0.75,index);
-                let v = p+vec2f(sin(index+drift.y)*size*0.22,0);
-                let d = box_distance(v,vec2f(size), mix(0.0,0.08,t(6u)));
-                light = max(light,emitter(d,0.9-index*0.08));
+                let size = mix(0.1, 0.44, t(5u))*pow(0.7, index);
+                let v = rotate2(p, time*(8.0+index*6.0)*t(3u)+index*18.0*t(7u));
+                let d = box_distance(v, vec2f(size), mix(0.0, size*0.4, t(6u)));
+                light = max(light, vec2f(band(d, mix(0.01,0.04,t(2u))), band(d,0.008))*(1.0-index*0.08));
             }
-            return light*mix(0.5,1.5,t(0u));
+            let core = exp(-r*r*16.0)*t(2u);
+            return (light+vec2f(core, core))*mix(0.5, 1.45, t(0u))*mix(0.7, 1.25, t(1u));
         }
-        case 45u: { // Glass Ripple
-            let wave = 0.034*sin(a*mix(2.0,12.0,t(5u))+drift.y)+0.012*cos(a*9.0);
-            let optical = pow(0.5+0.5*cos(mix(20.0, 80.0, t(6u))*(r+wave)+drift.x),4.0);
-            let falloff=1.0-smoothstep(0.27,0.43,r);
-            return vec2f(optical*falloff,optical*falloff*(0.49+t(2u)))*mix(0.5,1.4,t(0u));
+        case 45u: { // Glass Ripple — concentric glass rings from centre, no hard clip
+            let wave = 0.04*sin(a*mix(1.0,10.0,t(5u))+drift.y)+0.012*cos(a*7.0);
+            let optical = pow(0.5+0.5*cos(mix(10.0, 64.0, t(6u))*(r+wave)+time*t(3u)*4.0), mix(2.2, 7.5, t(7u)));
+            let falloff = exp(-r*1.15);
+            return vec2f(optical*falloff, optical*falloff*(0.5+t(2u)))*mix(0.5,1.4,t(0u))*mix(0.7,1.3,t(1u));
         }
         case 46u: { // Rings
             let waves = pow(0.5+0.5*cos(r*t(0u)*2.5+drift.x), t(2u))*exp(-t(1u)*r);
@@ -408,9 +552,14 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let d = length(v)-t(0u)*0.28;
             return emitter(d, 0.8)*vec2f(1.0, band(d, t(1u))*2.0);
         }
-        case 48u: { // Point Wave
-            let dens = t(0u);
-            return emitter(p.y+0.11*sin(p.x*t(2u)+drift.x)*t(1u),0.7)*vec2f(0.71,0.5+0.5*pow(cos(p.x*dens),4.0))*t(3u);
+        case 48u: { // Point Wave — discrete dots riding a sine
+            let dens = max(8.0, t(0u));
+            let wave = 0.14*sin(p.x*t(2u)+drift.x)*t(1u);
+            let gx = p.x*dens*0.28;
+            let gy = (p.y-wave)*mix(10.0, 28.0, clamp(t(3u)/1.8,0.0,1.0));
+            let f = vec2f(fract(gx)-0.5, fract(gy)-0.5);
+            let mask = 1.0-smoothstep(mix(0.06,0.22,clamp(t(3u)/1.8,0.0,1.0)), 0.38, length(f));
+            return vec2f(mask*0.72, mask);
         }
         case 49u: { // Dot Globe
             let radius = t(0u)*0.4;
@@ -529,11 +678,17 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let mark=smoothstep(0.36,0.72,stroke*mist(p*3.0)*1.55)*t(0u);
             return vec2f(mark*0.58, mark*t(1u)+t(5u)*hash(floor(p*80.0)));
         }
-        case 63u: { // Failing Ceiling
-            return grid_cells(p, mix(4.0,16.0,t(5u)), mix(3.0,12.0,t(5u)), 0.12, seed, time*t(3u))*vec2f(t(0u), t(2u))*(0.5+t(8u)*hash(floor(p*9.0)+floor(time*2.0)));
+        case 63u: { // Failing Ceiling — face-on panel grid, many dead, some stuttering
+            let cols = mix(5.0, 14.0, t(5u));
+            let rows = mix(4.0, 10.0, t(5u));
+            let g = grid_cells(p, cols, rows, 0.14, seed, time*t(3u));
+            let cell = floor(p*vec2f(cols, rows)+vec2f(cols, rows)*0.5);
+            let rnd = hash(cell+seed);
+            let stutter = select(0.06, select(step(0.35, 0.5+0.5*sin(time*14.0+rnd*40.0)), 1.0, rnd>0.45), rnd>0.22);
+            return g*vec2f(t(0u), t(2u))*stutter;
         }
-        case 64u: { // Office Ceiling
-            return grid_cells(p, 12.0, 8.0, 0.08, seed, time)*vec2f(t(0u)+0.3, t(1u)+0.3);
+        case 64u: { // Office Ceiling — even lit panel grid
+            return grid_cells(p, 10.0, 6.0, 0.1, seed, 0.0)*vec2f(0.45+t(0u), 0.3+t(1u));
         }
         case 65u: { // Rays
             return radial_rays(p-vec2f(0.0, t(1u)*0.5), t(0u), t(2u), 0.55, seed, drift);
@@ -550,50 +705,77 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let lines = pow(0.5+0.5*cos(v.x*n), mix(4.0, 18.0, 1.0-t(1u)));
             return vec2f(lines*0.55, lines)*smoothstep(-0.2, 0.5, 0.4-abs(v.y));
         }
-        case 68u: { // Hidden Light
-            return opening_mask(p, t(0u), t(4u))*vec2f(0.8, t(2u));
+        case 68u: { // Hidden Light · Panel / Spill / Roundness
+            let panel = mix(0.42, 0.94, t(0u));
+            let half = vec2f(max(aspect,1.0), max(1.0,1.0/aspect))*0.5*panel;
+            let roundness = mix(0.02, min(half.x, half.y)*0.9, t(2u));
+            let spill = mix(0.03, 0.22, t(1u));
+            return frame_glow(p, half, roundness, spill, t(2u));
         }
-        case 69u: { // Sky Opening
-            return opening_mask(p-vec2f(0,0.12), t(0u), t(1u))+vec2f(t(2u)*band(p.y+0.42,0.1), t(2u)*0.4);
+        case 69u: { // Sky Opening — filled rounded window of light + ceiling wash
+            let size = mix(0.12, 0.48, t(0u));
+            let d = box_distance(p-vec2f(0.0, 0.02), vec2f(size*1.05, size*0.78), mix(0.02, size*0.85, t(1u)));
+            let fill = 1.0-smoothstep(-0.004, 0.01, d);
+            let spill = exp(-max(d,0.0)*mix(7.0, 26.0, 1.0-t(2u)));
+            let ceil = t(2u)*exp(-max(0.0, 0.52-p.y)*9.0)*0.45;
+            return vec2f(fill*0.95+spill*(1.0-fill)+ceil, fill+spill);
         }
-        case 70u: { // Arch Opening
+        case 70u: { // Arch Opening — filled door-arches standing on the floor
             var light = vec2f(0);
             let n = max(1.0, t(0u));
+            let w = mix(0.08, 0.28, t(2u));
+            let h = mix(0.2, 0.52, t(1u));
+            let floor_y = 0.46;
             for (var i=0u; i<5u; i++) {
                 if f32(i) >= n { break; }
-                let x = (f32(i)-(n-1.0)*0.5)*mix(0.18,0.4,t(2u));
-                let v = p-vec2f(x, 0.05);
-                let arch = max(length(vec2f(v.x, min(v.y+0.05,0.0)))-t(2u)*0.35, v.y-t(1u)*0.35);
-                light = max(light, vec2f(1.0-smoothstep(-0.01,0.01,arch), band(arch,0.02)));
+                let x = (f32(i)-(n-1.0)*0.5)*w*2.35;
+                let lx = p.x-x;
+                let ly = floor_y-p.y;
+                let d = max(length(vec2f(lx, min(ly-(h-w), 0.0)))-w, -ly);
+                let fill = (1.0-smoothstep(-0.004, 0.01, d))*step(-0.02, ly);
+                let spill = exp(-max(d,0.0)*14.0)*t(3u);
+                light = max(light, vec2f(fill*0.95+spill, fill+spill));
             }
-            return light+vec2f(t(3u)*0.15, t(3u)*0.4);
+            return light;
         }
-        case 71u: { // Oculus
-            let radius = t(0u)*0.38;
-            let d = r-radius;
-            let disc = 1.0-smoothstep(-0.012,0.006,d);
-            let dome = mix(0.3, 1.0, 0.62-p.y)*t(1u);
-            return vec2f(disc*dome+band(d,0.055)*0.38, disc*(0.31-p.y)*t(2u)+band(d,0.01)*t(2u));
+        case 71u: { // Oculus — filled circular window with dome shading
+            let radius = mix(0.14, 0.4, t(0u));
+            let c = vec2f(0.0, 0.12);
+            let v = p-c;
+            let d = length(v)-radius;
+            let disc = 1.0-smoothstep(-0.006,0.01,d);
+            let dome = mix(1.0, 0.35, t(1u)*clamp((v.y+radius)/(2.0*radius),0.0,1.0));
+            let rim = band(d, 0.02)*t(2u);
+            return vec2f(disc*dome+rim*0.4, disc*0.55+rim);
         }
-        case 72u: { // Portal
-            let d=box_distance(p-vec2f(0,0.07),vec2f(mix(0.08,0.22,t(1u)), mix(0.12,0.32,t(0u))), mix(0.02,0.12,t(2u)));
-            let fill=1.0-smoothstep(-0.015,0.008,d);
-            return (emitter(d,0.4)+vec2f(fill*0.82,fill*t(3u))) ;
+        case 72u: { // Portal — glowing rounded doorway, dark inside
+            let d=box_distance(p-vec2f(0.0,0.04),vec2f(mix(0.1,0.28,t(1u)), mix(0.16,0.38,t(0u))), mix(0.02,0.16,t(2u)));
+            let fill=1.0-smoothstep(-0.01,0.008,d);
+            let rim=exp(-abs(d)*mix(12.0, 40.0, 1.0-t(3u)));
+            return vec2f(rim*(1.0-fill*0.7)+fill*0.08, rim+fill*t(3u)*0.2);
         }
-        case 73u: { // Pillar
+        case 73u: { // Pillar — tall vertical blade of light
             let v = rotate2(p, t(1u));
-            return emitter(v.x, 0.71)*vec2f(mix(0.8,1.6,1.0/max(0.08,t(0u))), 0.72);
+            let core = exp(-abs(v.x)/max(0.012, t(0u)*0.18));
+            let fall = smoothstep(-0.62, 0.15, p.y)*smoothstep(0.55, -0.05, p.y);
+            return vec2f(core*fall, core*core*fall);
         }
-        case 74u: { // Water Curtain
-            let flow = mist(vec2f(p.x*5.0,p.y*mix(2.0,9.0,t(5u)))+drift*t(4u)+seed);
-            let streaks = pow(0.5+0.5*cos(p.x*mix(20.0,90.0,t(5u))), 8.0);
-            return vec2f(flow*t(0u)+streaks*0.3, streaks*t(1u)+flow*t(7u));
+        case 74u: { // Water Curtain — falling streams, backlit, mist at the foot
+            let n = mix(12.0, 70.0, t(5u));
+            let x = p.x*n + sin(p.y*8.0+time*2.0)*0.35;
+            let streams = pow(0.5+0.5*cos(x), mix(4.0, 16.0, t(1u)));
+            let fall = 0.55+0.45*smoothstep(-0.5, 0.4, p.y);
+            let mistb = mist(vec2f(p.x*3.0, p.y*2.0+time)+seed)*smoothstep(0.05, 0.45, p.y)*t(7u);
+            return vec2f(streams*fall*t(0u)+mistb*0.4, streams*t(1u)+mistb);
         }
-        case 75u: { // Event Horizon
-            let radius = mix(0.16, 0.42, t(5u));
-            let d = r-radius;
-            let disk = band(p.y-p.x*mix(-0.4,0.4,t(6u)),0.028)*exp(-9.0*abs(p.x))*t(7u);
-            return emitter(d, 0.7+t(2u))+vec2f(disk,disk*0.60)*step(radius*0.72,r);
+        case 75u: { // Event Horizon — dark core, warped disk wrapping over and under
+            let radius = mix(0.14, 0.38, t(5u));
+            let hole = 1.0-smoothstep(radius-0.01, radius+0.008, r);
+            let ell = length(p/vec2f(1.0, mix(0.16, 0.42, t(6u))));
+            let disk = band(ell-radius*1.15, mix(0.035, 0.12, t(7u)))*(1.0-hole*0.88);
+            let rim = band(r-radius, 0.018)*(1.0-hole);
+            let stars = glitter_field(p, 14.0, 0.22, 0.85, time, seed)*(1.0-hole);
+            return vec2f(disk*0.75+rim*0.4+stars.x, disk+rim+stars.y)*mix(0.5,1.4,t(0u));
         }
         case 76u: { // Static Glass
             let d=box_distance(p,vec2f(0.38,0.18),0.03);
@@ -633,10 +815,12 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let mask=1.0-smoothstep(haze*0.55-0.06,haze*0.55+0.04,dots);
             return vec2f(mask*haze*t(0u), mask*haze*t(2u));
         }
-        case 82u: { // Gradient Sweep
-            let v = rotate2(q, t(0u)*50.0+drift.x*20.0);
-            let ramp = smoothstep(-t(2u)*0.4, t(2u)*0.4, v.x);
-            return vec2f(mix(ramp, smoothstep(0.0,1.0,ramp), t(1u)), pow(ramp,2.0));
+        case 82u: { // Gradient Sweep — soft directional wash
+            let v = rotate2(q, mix(-55.0, 55.0, t(0u))+drift.x*12.0);
+            let spread = max(0.15, t(2u)*0.55);
+            let ramp = smoothstep(-spread, spread, v.y);
+            let body = pow(ramp, mix(0.45, 2.4, t(1u)));
+            return vec2f(body*0.9, body*body);
         }
         case 83u: { // Light Field
             let field = mist(p*mix(1.5, 6.0, t(0u))+drift*t(1u)*2.0+seed);
@@ -674,10 +858,11 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let c = pow(n, mix(0.5, 2.8, t(2u)));
             return vec2f(c, c*c*1.1);
         }
-        case 89u: { // Threshold
-            let floorv = smoothstep(t(2u)-0.15, t(2u)+0.05, p.y)*t(0u);
-            let wall = band(abs(p.x)-0.42, 0.08)*t(1u);
-            return vec2f(floorv*0.7+wall, floorv+wall);
+        case 89u: { // Threshold — lit floor plane meeting a back wall
+            let horizon = t(2u);
+            let floorv = smoothstep(horizon-0.02, horizon+0.35, p.y)*exp(-abs(p.y-horizon)*mix(1.2, 6.0, t(0u)));
+            let wall = exp(-abs(p.y-horizon)*mix(2.0, 10.0, 1.0-t(1u)))*smoothstep(horizon, horizon-0.4, p.y);
+            return vec2f(floorv*0.85+wall*0.45, floorv+wall*0.6);
         }
         case 90u: { // Fog Bank
             let fog = mist(p*mix(1.4,4.5,t(1u))+drift*0.4+seed);

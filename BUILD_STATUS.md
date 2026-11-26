@@ -1,5 +1,12 @@
 # Build status
 
+## Finish and motion follow-up
+
+- The current editor includes expanded Look tuning, Finish settings, and Color tone controls. The follow-up wires remaining controls for Iris, Arch Window, Mirror Tunnel, LED Slats and CRT Phosphor, and uses ordered LED seam thresholds.
+- Spotlight and multiline Ticker timing now complete whole cycles. Look and Finish automation follows the Motion timing, and clicking the active preset preserves its tuning.
+- The combined WGSL passed validation. Native rebuild and runtime checks are in progress. To resume, run `cargo run --offline --release --example spike`, then the packaged Mac smoke test described below.
+- The live Studio comparison could not continue because the browser connection timed out. Next compare the controls against the live reference when access returns. Line Screen and a fuller motion timeline are still open.
+
 ## FX library and editor workflow in progress
 
 - Commit `276b23b` introduced 82 built-in looks with stable IDs and 47 surface finishes. The renderer spike passed for all looks in landscape, ultrawide and portrait, all finishes, color modes, and motion timing.

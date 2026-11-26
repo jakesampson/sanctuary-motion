@@ -86,7 +86,22 @@ pub struct ColorSettings {
     pub amount: f32,
     pub gradient: [[u8; 3]; 4],
     pub layout: u32,
+    #[serde(default = "default_slide")]
+    pub slide: f32,
+    #[serde(default = "default_mid_stop")]
+    pub mid_stop: f32,
+    #[serde(default = "default_glow_stop")]
+    pub glow_stop: f32,
+    #[serde(default = "default_glow_tone")]
+    pub glow_tone: f32,
+    #[serde(default)]
+    pub darkness: f32,
 }
+
+fn default_slide() -> f32 { 0.5 }
+fn default_mid_stop() -> f32 { 0.35 }
+fn default_glow_stop() -> f32 { 0.7 }
+fn default_glow_tone() -> f32 { 1.0 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 #[serde(default, rename_all = "camelCase")]
@@ -123,6 +138,11 @@ impl Default for ColorSettings {
                 [132, 225, 241],
             ],
             layout: 0,
+            slide: 0.5,
+            mid_stop: 0.35,
+            glow_stop: 0.7,
+            glow_tone: 1.0,
+            darkness: 0.0,
         }
     }
 }
@@ -163,6 +183,11 @@ impl Scene {
             || self.color.mode > 2
             || self.color.layout > 4
             || !(0.0..=1.0).contains(&self.color.amount)
+            || !(0.0..=1.0).contains(&self.color.slide)
+            || !(0.05..=0.9).contains(&self.color.mid_stop)
+            || !(0.1..=0.98).contains(&self.color.glow_stop)
+            || !(0.0..=1.0).contains(&self.color.glow_tone)
+            || !(0.0..=1.0).contains(&self.color.darkness)
             || self.animation.cycles > 4
             || self.animation.stop_fps > 24
             || !(0.0..=2.0).contains(&self.animation.movement)
@@ -208,6 +233,7 @@ struct Params {
     text_accent: [f32; 4],
     look_tune: [[f32; 4]; 4],
     finish_tune: [[f32; 4]; 2],
+    color_tone: [f32; 4],
 }
 
 #[derive(Clone)]
@@ -399,6 +425,7 @@ impl Target {
             }
             self.text_key = key;
         }
+        let motion_phase = scene.animation.phase(phase, scene.duration);
         let params = Params {
             size: [self.width, self.height],
             look: scene.look,
@@ -410,7 +437,7 @@ impl Target {
                 scene.animation.scale,
                 scene.animation.shift_x,
                 scene.animation.shift_y,
-                0.0,
+                scene.color.glow_tone,
             ],
             text_style: [self.text_lines, text.mode, text.treatment, text.blend],
             text_flags: [text.background, u32::from(text.crt), 0, 0],
@@ -429,7 +456,7 @@ impl Target {
                 &scene.look_tune.values,
                 &scene.look_tune.motions,
                 scene.look_tune.auto,
-                phase,
+                motion_phase,
             )),
             finish_tune: pack_finish(tune::bake(
                 tune::FINISH_TUNE,
@@ -437,10 +464,16 @@ impl Target {
                 &scene.finish_tune.values,
                 &scene.finish_tune.motions,
                 scene.finish_tune.auto,
-                phase,
+                motion_phase,
             )),
+            color_tone: [
+                scene.color.slide,
+                scene.color.mid_stop,
+                scene.color.glow_stop,
+                scene.color.darkness,
+            ],
             seed: scene.seed,
-            phase: scene.animation.phase(phase, scene.duration),
+            phase: motion_phase,
             energy: [0.45, 0.75, 1.0][scene.motion as usize] * scene.animation.movement,
             intensity: scene.intensity,
             composition: scene.width as f32 / scene.height as f32,

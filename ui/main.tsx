@@ -6,7 +6,7 @@ import { createRoot } from 'react-dom/client';
 import './style.css';
 import { catalog, looks } from './looks';
 import { finishes } from './finishes';
-import { ColorPanel, MotionPanel, TunePanel, RangeControl, ResetControl, percent, initialColor, initialAnimation, type RGB, type ColorSettings, type AnimationSettings } from './controls';
+import { ColorPanel, CollapsibleSection, MotionPanel, TunePanel, RangeControl, percent, initialColor, initialAnimation, type RGB, type ColorSettings, type AnimationSettings } from './controls';
 import { TextPanel, initialText, type TextSettings } from './text';
 import { defaultLookTune, defaultFinishTune, lookTune, finishTune, type TuneSettings } from './tune';
 
@@ -365,13 +365,13 @@ function App() {
         <section className="card editor" aria-label="Background editor">
           {step === 0 && <>
             <EffectGallery key="looks" surface={false} selected={scene.look}
-              onSelect={id => setScene(prev => ({ ...prev, look: id, lookTune: defaultLookTune(id) }))} />
+              onSelect={id => setScene(prev => prev.look === id ? prev : ({ ...prev, look: id, lookTune: defaultLookTune(id) }))} />
             <TunePanel title={`${looks[scene.look]} settings`} spec={lookTune[scene.look]} value={scene.lookTune}
               onChange={value => update('lookTune', value)} />
           </>}
           {step === 1 && <>
             <EffectGallery key="finishes" surface selected={scene.finish}
-              onSelect={id => setScene(prev => ({ ...prev, finish: id, finishTune: defaultFinishTune(id) }))} />
+              onSelect={id => setScene(prev => prev.finish === id ? prev : ({ ...prev, finish: id, finishTune: defaultFinishTune(id) }))} />
             <TunePanel title={`${finishes[scene.finish][0]} settings`} spec={finishTune[scene.finish]} value={scene.finishTune}
               onChange={value => update('finishTune', value)} />
           </>}
@@ -416,11 +416,11 @@ function App() {
       </section>
       <aside className="card inspector" aria-label="Background settings">
         <div className="card-heading"><h2>Settings</h2></div>
-        <details><summary>Fine tune<ResetControl name="fine tune" onReset={() => update('intensity', 0.75)} /></summary>
+        <CollapsibleSection title="Fine tune" name="fine tune" onReset={() => update('intensity', 0.75)}>
           <RangeControl name="Intensity" value={scene.intensity} min={0} max={1} step={0.01} defaultValue={0.75}
             label={percent(scene.intensity)} onChange={intensity => update('intensity', intensity)} />
           <button onClick={() => update('seed', crypto.getRandomValues(new Uint32Array(1))[0])}>Try another variation</button>
-        </details>
+        </CollapsibleSection>
         <div className="export-area">
           {error && <p className="message error" role="alert">{error}</p>}
           {notice && <p className="message" role="status">{notice}</p>}

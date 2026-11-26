@@ -20,6 +20,7 @@ struct Params {
     text_accent: vec4f,
     look_tune: array<vec4f, 4>,
     finish_tune: array<vec4f, 2>,
+    color_tone: vec4f,
 }
 
 @group(0) @binding(0) var<uniform> settings: Params;
@@ -83,8 +84,22 @@ fn look_color(sample_uv: vec2f, phase: f32) -> vec3f {
     var glow = light.y;
     let vignette = max(0.38, 1.0-dot(uv-0.5,uv-0.5)*1.28);
     let strength = settings.intensity*vignette;
-    let base = mix(settings.colors[0].rgb, settings.colors[1].rgb, clamp(body*strength,0.0,1.0));
-    let highlight = clamp(glow*strength,0.0,1.0);
+    let slide = settings.color_tone.x-0.5;
+    let mid_stop = clamp(settings.color_tone.y, 0.05, 0.9);
+    let glow_stop = clamp(max(settings.color_tone.z, mid_stop+0.05), 0.1, 0.98);
+    let darkness = clamp(settings.color_tone.w, 0.0, 1.0);
+    let x = clamp(body*strength + slide*0.45, 0.0, 1.0);
+    var mapped = x;
+    if x < mid_stop {
+        mapped = (x/mid_stop)*0.33;
+    } else if x < glow_stop {
+        mapped = 0.33+(x-mid_stop)/max(0.001, glow_stop-mid_stop)*0.34;
+    } else {
+        mapped = 0.67+(x-glow_stop)/max(0.001, 1.0-glow_stop)*0.33;
+    }
+    let shadow = mix(settings.colors[0].rgb, vec3f(0.0), darkness);
+    let base = mix(shadow, settings.colors[1].rgb, clamp(mapped*1.15, 0.0, 1.0));
+    let highlight = clamp(glow*strength*mix(0.35, 1.65, clamp(settings.framing.w, 0.0, 1.0)), 0.0, 1.0);
     let legacy = mix(base,settings.colors[2].rgb,highlight);
     let palette = mix(mix(base,settings.glow.rgb,smoothstep(0.0,0.52,highlight)),
                       settings.colors[2].rgb,smoothstep(0.47,1.0,highlight));
