@@ -30,7 +30,7 @@ fn main() -> Result<(), String> {
     for (width, height) in [(640, 360), (640, 160), (270, 480)] {
         let mut target = renderer.target(width, height)?;
         let mut previous = Vec::new();
-        for look in 0..6 {
+        for look in 0..sanctuary_render::LOOK_COUNT {
             let scene = Scene {
                 width,
                 height,
@@ -50,7 +50,51 @@ fn main() -> Result<(), String> {
             );
             previous.push(first);
         }
-        println!("All six looks distinct and animated at {width}×{height}");
+        println!(
+            "All {} looks distinct and animated at {width}×{height}",
+            sanctuary_render::LOOK_COUNT
+        );
     }
+    let scene = Scene {
+        look: 20,
+        ..Scene::default()
+    };
+    let mut target = renderer.target(384, 216)?;
+    let mut finishes = Vec::new();
+    for finish in 0..sanctuary_render::FINISH_COUNT {
+        let scene = Scene { finish, ..scene };
+        let first = target.frame(&scene, 0.0)?;
+        assert_eq!(
+            first,
+            target.frame(&scene, 1.0)?,
+            "finish {finish} breaks the loop"
+        );
+        assert!(
+            finishes.iter().all(|pixels| pixels != &first),
+            "finish {finish} is duplicated"
+        );
+        finishes.push(first);
+    }
+    println!(
+        "All {} finishes distinct and loop-safe",
+        sanctuary_render::FINISH_COUNT
+    );
+    let mut styled = scene;
+    styled.color.mode = 1;
+    assert_ne!(target.frame(&scene, 0.0)?, target.frame(&styled, 0.0)?);
+    styled.color.amount = 0.0;
+    assert_eq!(target.frame(&scene, 0.0)?, target.frame(&styled, 0.0)?);
+    styled.color.mode = 2;
+    let split = target.frame(&styled, 0.0)?;
+    for layout in 1..5 {
+        styled.color.layout = layout;
+        assert_ne!(split, target.frame(&styled, 0.0)?);
+    }
+    styled.animation.cycles = 2;
+    styled.animation.stop_fps = 6;
+    styled.animation.ease = 0.35;
+    assert_eq!(target.frame(&styled, 0.0)?, target.frame(&styled, 0.001)?);
+    assert_eq!(target.frame(&styled, 0.0)?, target.frame(&styled, 1.0)?);
+    println!("Color modes, eased timing and held frames passed");
     Ok(())
 }

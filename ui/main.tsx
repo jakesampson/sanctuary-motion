@@ -4,12 +4,17 @@ import { open, save } from '@tauri-apps/plugin-dialog';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
+import { catalog, looks } from './looks';
+import { finishes } from './finishes';
+import { ColorPanel, MotionPanel, initialColor, initialAnimation, type RGB, type ColorSettings, type AnimationSettings } from './controls';
 
-type RGB = [number, number, number];
 type Palette = [RGB, RGB, RGB];
 type Scene = {
   version: 1;
   look: number;
+  finish: number;
+  color: ColorSettings;
+  animation: AnimationSettings;
   seed: number;
   motion: number;
   intensity: number;
@@ -20,8 +25,7 @@ type Scene = {
   duration: number;
 };
 
-const looks = ['Aurora', 'Silk', 'Bokeh', 'Dust', 'Fog', 'Light Rays'];
-const palettes: { name: string; colors: Palette }[] = [
+const thumbnailPalettes: { name: string; colors: Palette }[] = [
   { name: 'Sea Glass', colors: [[8, 12, 27], [39, 96, 132], [116, 225, 186]] },
   { name: 'Ember', colors: [[21, 11, 20], [134, 45, 47], [248, 169, 90]] },
   { name: 'Violet', colors: [[14, 9, 30], [87, 55, 148], [200, 157, 247]] },
@@ -37,12 +41,11 @@ const screens = [
   ['Square · 1:1', 1080, 1080],
 ] as const;
 const initial: Scene = {
-  version: 1, look: 0, seed: 1, motion: 1, intensity: 0.75,
-  colors: palettes[0].colors, width: 1920, height: 1080, fps: 30, duration: 15,
+  version: 1, look: 0, finish: 0, color: initialColor, animation: initialAnimation,
+  seed: 1, motion: 1, intensity: 0.75,
+  colors: thumbnailPalettes[0].colors, width: 1920, height: 1080, fps: 30, duration: 15,
 };
 const projectFilter = { name: 'Sanctuary Motion project', extensions: ['sanctuary'] };
-const toHex = (rgb: RGB) => '#' + rgb.map(value => value.toString(16).padStart(2, '0')).join('');
-const fromHex = (hex: string): RGB => [1, 3, 5].map(i => parseInt(hex.substring(i, i + 2), 16)) as RGB;
 
 function draw(canvas: HTMLCanvasElement, bytes: ArrayBuffer, width: number, height: number) {
   if (canvas.width !== width) canvas.width = width;
@@ -52,17 +55,60 @@ function draw(canvas: HTMLCanvasElement, bytes: ArrayBuffer, width: number, heig
   context.putImageData(new ImageData(new Uint8ClampedArray(bytes), width, height), 0, 0);
 }
 
-function Thumbnail({ look }: { look: number }) {
+function Thumbnail({ look, finish }: { look: number; finish: number }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     let ignore = false;
-    const scene = { ...initial, look, colors: palettes[look % palettes.length].colors };
+    const scene = { ...initial, look, finish, colors: thumbnailPalettes[look % thumbnailPalettes.length].colors };
     invoke<ArrayBuffer>('preview_frame', { scene, phase: 0.21, width: 144, height: 81 })
       .then(bytes => { if (!ignore && canvas.current) draw(canvas.current, bytes, 144, 81); })
       .catch(() => { /* The main preview surfaces renderer errors. */ });
     return () => { ignore = true; };
-  }, [look]);
+  }, [look, finish]);
   return <canvas ref={canvas} aria-hidden="true" />;
+}
+
+const pageSize = 12;
+
+function EffectGallery({ surface, selected, onSelect }: {
+  surface: boolean; selected: number; onSelect: (id: number) => void;
+}) {
+  const entries = surface ? finishes : catalog;
+  const itemName = surface ? 'finishes' : 'looks';
+  const categories = ['All', ...new Set(entries.map(([, category]) => category))];
+  const [category, setCategory] = useState('All');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const normalized = (value: string) => value.toLocaleLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+  const query = normalized(search.trim());
+  const matches = entries.map(([name, group], id) => ({ name, group, id })).filter(({ name, group }) =>
+    (category === 'All' || group === category) && normalized(`${name} ${group}`).includes(query));
+  const start = page * pageSize;
+  return <div className="gallery">
+    <div className="card-heading"><h2>{surface ? 'Surface finish' : 'Background look'}</h2><span className="size">{entries[selected][0]}</span></div>
+    <div className="look-filters">
+      <label className="field">Collection
+        <select value={category} onChange={event => { setCategory(event.target.value); setPage(0); }}>
+          {categories.map(group => <option key={group}>{group}</option>)}
+        </select>
+      </label>
+      <label className="field">Search {itemName}
+        <input type="search" value={search} onChange={event => { setSearch(event.target.value); setPage(0); }} />
+      </label>
+    </div>
+    <div className="looks" aria-label={itemName}>
+      {matches.slice(start, start + pageSize).map(({ name, id }) =>
+        <button className="look" key={id} aria-pressed={id === selected} onClick={() => onSelect(id)}>
+          <Thumbnail look={surface ? 20 : id} finish={surface ? id : 0} /><span>{name}</span>
+        </button>)}
+    </div>
+    {matches.length === 0 && <p className="gallery-status" role="status">No matching {itemName}.</p>}
+    {matches.length > pageSize && <div className="gallery-pages">
+      <button disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</button>
+      <span role="status">{start + 1}–{Math.min(start + pageSize, matches.length)} of {matches.length}</span>
+      <button disabled={start + pageSize >= matches.length} onClick={() => setPage(page + 1)}>Next</button>
+    </div>}
+  </div>;
 }
 
 function Preview({ scene, lyrics, playing }: { scene: Scene; lyrics: boolean; playing: boolean }) {
@@ -144,6 +190,7 @@ function CustomSize({ width, height, onApply }: {
 
 function App() {
   const [scene, setScene] = useState(initial);
+  const [step, setStep] = useState(0);
   const [lyrics, setLyrics] = useState(false);
   const [playing, setPlaying] = useState(true);
   const [custom, setCustom] = useState(false);
@@ -239,29 +286,27 @@ function App() {
             <label className="toggle"><input type="checkbox" checked={lyrics} onChange={event => setLyrics(event.target.checked)} /> Preview lyrics</label>
           </div>
         </div>
-        <div className="card gallery">
-          <div className="card-heading"><h2>Looks</h2></div>
-          <div className="looks" aria-label="Background looks">
-            {looks.map((look, index) => <button className="look" key={look} aria-pressed={index === scene.look} onClick={() => update('look', index)}>
-              <Thumbnail look={index} /><span>{look}</span>
-            </button>)}
-          </div>
-        </div>
+        <section className="card editor" aria-label="Background editor">
+          <nav className="editor-steps" aria-label="Editor steps">
+            {['Look', 'Finish', 'Color', 'Motion'].map((label, index) =>
+              <button key={label} aria-current={step === index ? 'step' : undefined} onClick={() => setStep(index)}>
+                <span aria-hidden="true">{index + 1}.</span> {label}
+              </button>)}
+          </nav>
+          {step === 0 && <EffectGallery key="looks" surface={false} selected={scene.look} onSelect={id => update('look', id)} />}
+          {step === 1 && <EffectGallery key="finishes" surface selected={scene.finish} onSelect={id => update('finish', id)} />}
+          {step === 2 && <ColorPanel colors={scene.colors} color={scene.color}
+            onChange={(colors, color) => setScene(prev => ({ ...prev, colors, color }))} />}
+          {step === 3 && <MotionPanel animation={scene.animation} duration={scene.duration} motion={scene.motion}
+            onAnimation={value => update('animation', value)} onDuration={value => update('duration', value)}
+            onMotion={value => update('motion', value)} />}
+          {step < 3 && <div className="step-footer">
+            <button onClick={() => setStep(step + 1)}>Continue to {['Finish', 'Color', 'Motion'][step]}</button>
+          </div>}
+        </section>
       </section>
       <aside className="card inspector" aria-label="Background settings">
         <div className="card-heading"><h2>Settings</h2></div>
-        <fieldset><legend>Palette</legend>
-          <div className="palettes">
-            {palettes.map(palette => <button key={palette.name} type="button" title={palette.name}
-              aria-label={palette.name} aria-pressed={JSON.stringify(palette.colors) === JSON.stringify(scene.colors)}
-              onClick={() => update('colors', palette.colors)}
-              style={{ background: `linear-gradient(135deg,${palette.colors.map(toHex).join(',')})` }} />)}
-          </div>
-        </fieldset>
-        <fieldset><legend>Motion</legend>
-          <div className="segments">{['Quiet', 'Gentle', 'Full'].map((label, index) =>
-            <button key={label} aria-pressed={scene.motion === index} onClick={() => update('motion', index)}>{label}</button>)}</div>
-        </fieldset>
         <label className="field">Screen
           <select value={custom || screen < 0 ? 'custom' : String(screen)} onChange={event => chooseScreen(event.target.value)}>
             {screens.map(([label, width, height], index) => <option key={label} value={index}>{label} · {width} × {height}</option>)}
@@ -271,14 +316,6 @@ function App() {
         {(custom || screen < 0) && <CustomSize key={`${scene.width}x${scene.height}`} width={scene.width} height={scene.height}
           onApply={(width, height) => setScene(prev => ({ ...prev, width, height }))} />}
         <details><summary>Fine tune</summary>
-          <fieldset><legend>Custom colors</legend><div className="custom-colors">
-            {scene.colors.map((color, index) => <input key={index} type="color" aria-label={['Base color', 'Midtone color', 'Highlight color'][index]}
-              value={toHex(color)} onChange={event => {
-                const next = [...scene.colors] as Palette;
-                next[index] = fromHex(event.target.value);
-                update('colors', next);
-              }} />)}
-          </div></fieldset>
           <label className="field">Intensity <input type="range" min="0" max="1" step="0.01" value={scene.intensity}
             onChange={event => update('intensity', event.target.valueAsNumber)} /></label>
           <button onClick={() => update('seed', crypto.getRandomValues(new Uint32Array(1))[0])}>Try another variation</button>

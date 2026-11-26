@@ -1,5 +1,12 @@
 # Build status
 
+## FX library and editor workflow in progress
+
+- The library now has 82 catalog entries with stable numeric IDs. The native renderer spike confirmed distinct animated outputs for landscape and ultrawide before the Finish work began.
+- Steps 2–4 are wired to preview, saved scenes and native exports. Finish has 47 treatments, Color has Palette, Tint and Gradient Map, and Motion has whole-cycle speed, framing, stop motion and easing.
+- In progress: step 5 Text, with native text compositing for optional export. The original sample lyric guide remains preview-only.
+- Next: check legacy project loading and run the renderer and offline packaged smoke suites after the Text integration.
+
 Run started November 26, 2026 at 09:10 AEST. Hard stop at 14:10 AEST.
 
 ## Native rendering spike

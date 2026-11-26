@@ -7,6 +7,11 @@ struct Params {
     intensity: f32,
     composition: f32,
     colors: array<vec4f, 3>,
+    surface: vec4u,
+    tint: vec4f,
+    glow: vec4f,
+    gradient: array<vec4f, 4>,
+    framing: vec4f,
 }
 
 @group(0) @binding(0) var<uniform> settings: Params;
@@ -52,13 +57,11 @@ fn drifting_lights(p: vec2f, t: f32, seed: f32, dust: bool) -> f32 {
     return light;
 }
 
-@compute @workgroup_size(8,8)
-fn render(@builtin(global_invocation_id) id: vec3u) {
-    if (any(id.xy >= settings.size)) { return; }
-    let uv = (vec2f(id.xy)+0.5)/vec2f(settings.size);
+fn look_color(sample_uv: vec2f, phase: f32) -> vec3f {
+    let uv = (sample_uv-0.5-settings.framing.yz)/settings.framing.x+0.5;
     let aspect = settings.composition;
     let p = (uv-0.5)*vec2f(aspect,1.0)/pow(max(aspect,1.0),0.42);
-    let t = settings.phase*6.283185307;
+    let t = phase*6.283185307;
     let drift = vec2f(cos(t),sin(t))*settings.energy;
     let seed = f32(settings.seed % 997u)*0.71;
     var body = 0.0;
@@ -93,7 +96,7 @@ fn render(@builtin(global_invocation_id) id: vec3u) {
             body = smoothstep(0.22,0.82,fog)*0.84;
             glow = smoothstep(0.40,0.82,wisps)*body*0.58;
         }
-        default: {
+        case 5u: {
             let source = p-vec2f(-0.47+drift.x*0.07,-0.84);
             let angle = atan2(source.y,source.x);
             let ray = pow(0.5+0.5*sin(angle*26.0+seed*0.6+drift.y),6.0);
@@ -101,11 +104,51 @@ fn render(@builtin(global_invocation_id) id: vec3u) {
             body = falloff*1.6*(0.3+0.83*ray);
             glow = falloff*ray*0.84;
         }
+        default: {
+            let light = library_look(settings.look,uv,t,drift,seed);
+            body = light.x;
+            glow = light.y;
+        }
     }
     let vignette = max(0.38, 1.0-dot(uv-0.5,uv-0.5)*1.28);
     let strength = settings.intensity*vignette;
     let base = mix(settings.colors[0].rgb, settings.colors[1].rgb, clamp(body*strength,0.0,1.0));
-    let color = mix(base, settings.colors[2].rgb, clamp(glow*strength,0.0,1.0));
+    let highlight = clamp(glow*strength,0.0,1.0);
+    let legacy = mix(base,settings.colors[2].rgb,highlight);
+    let palette = mix(mix(base,settings.glow.rgb,smoothstep(0.0,0.52,highlight)),
+                      settings.colors[2].rgb,smoothstep(0.47,1.0,highlight));
+    return select(legacy,palette,settings.glow.a>0.0);
+}
+
+fn color_mode(color: vec3f, uv: vec2f) -> vec3f {
+    let light = max(max(color.r,color.g),color.b);
+    if settings.surface.y==1u {
+        let tint = settings.tint.rgb/max(0.001,max(max(settings.tint.r,settings.tint.g),settings.tint.b));
+        return mix(color,tint*light,settings.tint.a);
+    }
+    if settings.surface.y!=2u { return color; }
+    var position = uv.x;
+    let q=uv-0.5;
+    switch settings.surface.z {
+        case 1u: { position=length(q)*1.85; }
+        case 2u: { position=light; }
+        case 3u: { position=0.5+0.5*sin((uv.x+uv.y*0.6)*12.0); }
+        case 4u: { position=mist(uv*5.3)*1.25; }
+        default: {}
+    }
+    let scaled=clamp(position,0.0,1.0)*3.0;
+    let index=min(u32(scaled),2u);
+    let ramp=mix(settings.gradient[index].rgb,settings.gradient[index+1u].rgb,scaled-f32(index));
+    let baseline=max(max(settings.colors[0].r,settings.colors[0].g),settings.colors[0].b);
+    let energy=clamp((light-baseline)*1.25,0.0,1.0);
+    return settings.colors[0].rgb*0.55+ramp*energy;
+}
+
+@compute @workgroup_size(8,8)
+fn render(@builtin(global_invocation_id) id: vec3u) {
+    if (any(id.xy >= settings.size)) { return; }
+    let uv = (vec2f(id.xy)+0.5)/vec2f(settings.size);
+    let color = color_mode(finish_color(uv, settings.surface.x),uv);
     let dither = (hash(vec2f(id.xy))-0.5)/255.0;
     pixels[id.y*settings.size.x+id.x] = pack4x8unorm(vec4f(clamp(color+dither,vec3f(0),vec3f(1)),1));
 }

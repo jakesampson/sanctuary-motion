@@ -12,7 +12,7 @@
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; }
 button, input, select { font: inherit; }
-button, select, input[type=number] {
+button, select, input[type=number], input[type=search] {
   color: inherit;
   background: #252934;
   border: 1px solid var(--line);
@@ -86,6 +86,26 @@ main {
 .toggle { display: inline-flex; align-items: center; gap: .5rem; font-size: .9rem; }
 input[type=checkbox], input[type=range], progress { accent-color: var(--accent); }
 .looks { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .55rem; }
+.look-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: .55rem; margin-bottom: .85rem; }
+.look-filters input { min-width: 0; }
+.gallery-pages { display: flex; justify-content: space-between; align-items: center; gap: .5rem; margin-top: .85rem; }
+.gallery-pages span, .gallery-status { color: var(--muted); font-size: .85rem; }
+.editor-steps { display: flex; flex-wrap: wrap; gap: .42rem; border-bottom: 1px solid var(--line); padding-bottom: .8rem; margin-bottom: .9rem; }
+.editor-steps [aria-current=step] { border-color: var(--accent); color: var(--accent); }
+.editor-steps span { color: var(--muted); }
+.step-footer { display: flex; justify-content: flex-end; margin-top: .85rem; }
+.step-content { display: grid; gap: .85rem; }
+.step-content .card-heading { margin: 0; }
+.range-control { display: grid; gap: .45rem; font-size: .88rem; }
+.range-control span { display: flex; justify-content: space-between; gap: .45rem; }
+.range-control output { color: var(--muted); }
+.range-control input { width: 100%; margin: .08rem 0; }
+.ramp-choices, .color-fields { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(7rem,100%),1fr)); gap: .5rem; }
+.ramp-choices button { display: grid; gap: .3rem; padding: .4rem; font-size: .81rem; text-align: left; }
+.ramp-swatch { height: 1.2rem; border-radius: .3rem; }
+.color-field { display: grid; gap: .3rem; min-width: 0; }
+.color-field label { display: flex; align-items: center; justify-content: space-between; gap: .2rem; font-size: .8rem; }
+.color-field input:not([type=color]) { background: #252934; color: inherit; border: 1px solid var(--line); border-radius: .4rem; padding: .42rem; width: 100%; }
 .look { padding: .27rem; min-width: 0; text-align: left; font-size: .8rem; }
 .look canvas { width: 100%; aspect-ratio: 16 / 9; background: #121622; border-radius: .3rem; display: block; }
 .look span { display: block; padding: .34rem .24rem .12rem; }

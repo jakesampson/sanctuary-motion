@@ -3,11 +3,20 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use wgpu::util::DeviceExt;
 
+pub const LOOK_COUNT: u32 = 82;
+pub const FINISH_COUNT: u32 = 47;
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Scene {
     pub version: u32,
     pub look: u32,
+    #[serde(default)]
+    pub finish: u32,
+    #[serde(default)]
+    pub color: ColorSettings,
+    #[serde(default)]
+    pub animation: AnimationSettings,
     pub seed: u32,
     pub motion: u32,
     pub intensity: f32,
@@ -18,11 +27,82 @@ pub struct Scene {
     pub duration: u32,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AnimationSettings {
+    pub cycles: u32,
+    pub movement: f32,
+    pub scale: f32,
+    pub shift_x: f32,
+    pub shift_y: f32,
+    pub stop_fps: u32,
+    pub ease: f32,
+}
+
+impl Default for AnimationSettings {
+    fn default() -> Self {
+        Self {
+            cycles: 1,
+            movement: 1.0,
+            scale: 1.0,
+            shift_x: 0.0,
+            shift_y: 0.0,
+            stop_fps: 0,
+            ease: 0.0,
+        }
+    }
+}
+
+impl AnimationSettings {
+    fn phase(&self, phase: f32, duration: u32) -> f32 {
+        let mut phase = phase.rem_euclid(1.0);
+        if self.stop_fps > 0 {
+            let steps = (duration * self.stop_fps) as f32;
+            phase = (phase * steps + 0.00001).floor().min(steps - 1.0) / steps;
+        }
+        let waves = std::f32::consts::TAU * duration.div_ceil(4) as f32;
+        let eased = phase - self.ease * (waves * phase).sin() / waves;
+        (eased * self.cycles as f32).rem_euclid(1.0)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ColorSettings {
+    pub mode: u32,
+    pub glow: Option<[u8; 3]>,
+    pub tint: [u8; 3],
+    pub amount: f32,
+    pub gradient: [[u8; 3]; 4],
+    pub layout: u32,
+}
+
+impl Default for ColorSettings {
+    fn default() -> Self {
+        Self {
+            mode: 0,
+            glow: None,
+            tint: [255, 174, 110],
+            amount: 1.0,
+            gradient: [
+                [168, 41, 113],
+                [112, 62, 172],
+                [54, 120, 204],
+                [132, 225, 241],
+            ],
+            layout: 0,
+        }
+    }
+}
+
 impl Default for Scene {
     fn default() -> Self {
         Self {
             version: 1,
             look: 0,
+            finish: 0,
+            color: ColorSettings::default(),
+            animation: AnimationSettings::default(),
             seed: 1,
             motion: 1,
             intensity: 0.75,
@@ -38,7 +118,18 @@ impl Default for Scene {
 impl Scene {
     pub fn validate(&self) -> Result<(), String> {
         if self.version != 1
-            || self.look > 5
+            || self.look >= LOOK_COUNT
+            || self.finish >= FINISH_COUNT
+            || self.color.mode > 2
+            || self.color.layout > 4
+            || !(0.0..=1.0).contains(&self.color.amount)
+            || self.animation.cycles > 4
+            || self.animation.stop_fps > 24
+            || !(0.0..=2.0).contains(&self.animation.movement)
+            || !(0.5..=3.0).contains(&self.animation.scale)
+            || !(-0.5..=0.5).contains(&self.animation.shift_x)
+            || !(-0.5..=0.5).contains(&self.animation.shift_y)
+            || !(0.0..=1.0).contains(&self.animation.ease)
             || self.motion > 2
             || !(0.0..=1.0).contains(&self.intensity)
             || ![24, 25, 30, 50, 60].contains(&self.fps)
@@ -64,6 +155,11 @@ struct Params {
     intensity: f32,
     composition: f32,
     colors: [[f32; 4]; 3],
+    surface: [u32; 4],
+    tint: [f32; 4],
+    glow: [f32; 4],
+    gradient: [[f32; 4]; 4],
+    framing: [f32; 4],
 }
 
 #[derive(Clone)]
@@ -92,7 +188,16 @@ impl Renderer {
         .map_err(|e| e.to_string())?;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Worship looks"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("looks.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                concat!(
+                    include_str!("looks.wgsl"),
+                    "\n",
+                    include_str!("library.wgsl"),
+                    "\n",
+                    include_str!("finishes.wgsl")
+                )
+                .into(),
+            ),
         });
         let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
             label: None,
@@ -188,9 +293,19 @@ impl Target {
         let params = Params {
             size: [self.width, self.height],
             look: scene.look,
+            surface: [scene.finish, scene.color.mode, scene.color.layout, 0],
+            tint: rgb(scene.color.tint, scene.color.amount),
+            glow: scene.color.glow.map_or([0.0; 4], |color| rgb(color, 1.0)),
+            gradient: scene.color.gradient.map(|color| rgb(color, 1.0)),
+            framing: [
+                scene.animation.scale,
+                scene.animation.shift_x,
+                scene.animation.shift_y,
+                0.0,
+            ],
             seed: scene.seed,
-            phase: phase.rem_euclid(1.0),
-            energy: [0.45, 0.75, 1.0][scene.motion as usize],
+            phase: scene.animation.phase(phase, scene.duration),
+            energy: [0.45, 0.75, 1.0][scene.motion as usize] * scene.animation.movement,
             intensity: scene.intensity,
             composition: scene.width as f32 / scene.height as f32,
             colors: scene
@@ -222,6 +337,10 @@ impl Target {
         self.readback.unmap();
         Ok(pixels)
     }
+}
+
+fn rgb([r, g, b]: [u8; 3], alpha: f32) -> [f32; 4] {
+    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, alpha]
 }
 
 pub fn write_png(out: impl Write, width: u32, height: u32, pixels: &[u8]) -> Result<(), String> {

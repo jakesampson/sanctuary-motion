@@ -28,9 +28,9 @@ async function runSmoke({ dir, fullDisk, missingEncoder }) {
   try {
     await waitFor(() => painted(document.querySelector('.preview-surface canvas')), 'Main canvas was never painted.');
     assert(document.querySelector('h1').textContent === 'Sanctuary Motion', 'Desktop editor loaded in the native webview');
-    await waitFor(() => [...document.querySelectorAll('.look canvas')].length === 6 &&
+    await waitFor(() => [...document.querySelectorAll('.look canvas')].length === 12 &&
       [...document.querySelectorAll('.look canvas')].every(painted), 'Preset thumbnails were not painted.');
-    assert(true, 'Six procedural thumbnails painted');
+    assert(true, 'First page of procedural thumbnails painted');
     const preview = document.querySelector('.preview-surface canvas');
     const sample = () => preview.getContext('2d').getImageData(0, 0, preview.width, preview.height).data;
     const initial = sample();
@@ -50,14 +50,14 @@ async function runSmoke({ dir, fullDisk, missingEncoder }) {
     await waitFor(() => innerWidth <= 590, 'Could not test the compact desktop window.');
     assert(document.documentElement.scrollWidth <= innerWidth + 1, 'Compact-width editor fits horizontally');
 
-    const edited = { ...scene, look: 1, seed: 12, motion: 2, width: 3840, height: 960 };
+    const edited = { ...scene, look: 68, seed: 12, motion: 2, width: 3840, height: 960 };
     const path = file('ultrawide.sanctuary');
     await invoke('save_project', { path, scene: edited });
     const reopened = await invoke('open_project', { path });
     assert(Object.keys(edited).every(key => JSON.stringify(reopened[key]) === JSON.stringify(edited[key])), 'Edited project saves and reopens exactly');
     assert((await errorFrom(invoke('open_project', { path: file('absent.sanctuary') }))).length > 0, 'Missing project reports an error');
     for (const [name, width, height] of [['landscape', 1920, 1080], ['ultrawide', 3840, 960], ['portrait', 1080, 1920]]) {
-      const settings = { ...scene, width, height };
+      const settings = { ...scene, look: name === 'ultrawide' ? edited.look : scene.look, width, height };
       await exportFile(name + '.mp4', settings);
       assert(true, name + ' MP4 export completed');
     }
