@@ -230,8 +230,8 @@ function App() {
   const [overlayFit, setOverlayFit] = useState(false);
   const [overlayRevision, setOverlayRevision] = useState(0);
   const [overlayBusy, setOverlayBusy] = useState(false);
-  const [includeText, setIncludeText] = useState(false);
-  const [includeOverlay, setIncludeOverlay] = useState(false);
+  const [includeText, setIncludeText] = useState(true);
+  const [includeOverlay, setIncludeOverlay] = useState(true);
   const [custom, setCustom] = useState(false);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -258,7 +258,7 @@ function App() {
       const loaded = await invoke<Scene>('open_project', { path });
       setScene(loaded);
       setTextReset(value => value + 1);
-      setIncludeText(false);
+      setIncludeText(true);
       setCustom(!screens.some(([, w, h]) => loaded.width === w && loaded.height === h));
       setName(filename(path).replace(/\.sanctuary$/i, ''));
       setNotice('Project opened.');
@@ -416,7 +416,7 @@ function App() {
       </section>
       <aside className="card inspector" aria-label="Background settings">
         <div className="card-heading"><h2>Settings</h2></div>
-        <details><summary>Fine tune<ResetControl name="fine tune" onReset={() => update('intensity', 0.75)} /></summary>
+        <details><summary>Fine tune<ResetControl name="fine tune" onReset={() => setScene(prev => ({ ...prev, intensity: 0.75, seed: initial.seed }))} /></summary>
           <RangeControl name="Intensity" value={scene.intensity} min={0} max={1} step={0.01} defaultValue={0.75}
             label={percent(scene.intensity)} onChange={intensity => update('intensity', intensity)} />
           <button onClick={() => update('seed', crypto.getRandomValues(new Uint32Array(1))[0])}>Try another variation</button>

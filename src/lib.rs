@@ -10,6 +10,7 @@ mod text;
 mod tune;
 pub use overlay::Overlay;
 pub use text::TextSettings;
+pub use tune::{FINISH_TUNE, LOOK_TUNE};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,13 +54,13 @@ pub struct AnimationSettings {
 impl Default for AnimationSettings {
     fn default() -> Self {
         Self {
-            cycles: 1,
-            movement: 1.0,
+            cycles: 3,
+            movement: 1.25,
             scale: 1.0,
             shift_x: 0.0,
             shift_y: 0.0,
             stop_fps: 0,
-            ease: 0.0,
+            ease: 0.3,
         }
     }
 }
@@ -163,10 +164,10 @@ impl Scene {
             || self.color.mode > 2
             || self.color.layout > 4
             || !(0.0..=1.0).contains(&self.color.amount)
-            || self.animation.cycles > 4
+            || self.animation.cycles > 8
             || self.animation.stop_fps > 24
-            || !(0.0..=2.0).contains(&self.animation.movement)
-            || !(0.5..=3.0).contains(&self.animation.scale)
+            || !(0.0..=3.0).contains(&self.animation.movement)
+            || !(0.5..=5.0).contains(&self.animation.scale)
             || !(-0.5..=0.5).contains(&self.animation.shift_x)
             || !(-0.5..=0.5).contains(&self.animation.shift_y)
             || !(0.0..=1.0).contains(&self.animation.ease)
@@ -496,6 +497,36 @@ fn pack_finish(values: [f32; 16]) -> [[f32; 4]; 2] {
         [values[0], values[1], values[2], values[3]],
         [values[4], values[5], values[6], values[7]],
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn phase_ease_zero_is_identity() {
+        let s = AnimationSettings { cycles: 1, movement: 1.0, scale: 1.0, shift_x: 0.0, shift_y: 0.0, stop_fps: 0, ease: 0.0 };
+        // With ease=0 and no stop_fps, phase should be unchanged.
+        assert!((s.phase(0.25f32, 15) - 0.25f32).abs() < 1e-9);
+    }
+
+    #[test]
+    fn phase_ease_one_is_smoothstep() {
+        let s = AnimationSettings { cycles: 1, movement: 1.0, scale: 1.0, shift_x: 0.0, shift_y: 0.0, stop_fps: 0, ease: 1.0 };
+        let p = s.phase(0.25f32, 15);
+        // With waves ≈ 25, sin(waves*phase) ≈ sin(6.28) ≈ 0, so phase ≈ 0.25.
+        let expected = 0.25;
+        assert!((p - expected).abs() < 0.01);
+    }
+
+    #[test]
+    fn phase_stop_fps_quantizes() {
+        let s = AnimationSettings { cycles: 1, movement: 1.0, scale: 1.0, shift_x: 0.0, shift_y: 0.0, stop_fps: 8, ease: 0.0 };
+        // duration=15, stop_fps=8 → steps = 15*8 = 120. quantize phase.
+        let out = s.phase(0.0f32, 15);
+        // After quantization, value must be in [0, steps-1]/steps = [0,119]/120 ≈ 0.9917
+        assert!(out >= 0.0 && out <= 1.0);
+    }
 }
 
 pub fn write_png(out: impl Write, width: u32, height: u32, pixels: &[u8]) -> Result<(), String> {

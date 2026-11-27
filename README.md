@@ -2,6 +2,10 @@
 
 An offline desktop studio for creating seamless worship backgrounds. Choose a look, adjust its palette and motion, check lyric readability, and export at the exact size of your screen. See the [build plan](BUILD_PLAN.md).
 
+## Downloads
+
+Get the latest stable [Windows, macOS Intel, and macOS Apple Silicon builds from GitHub Releases](https://github.com/jakesampson/sanctuary-motion/releases/latest). No account or internet connection is needed to use the app.
+
 ## Make a loop
 
 1. Choose a **Look**, then apply an optional surface **Finish**.

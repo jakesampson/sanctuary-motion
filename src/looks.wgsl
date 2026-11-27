@@ -78,7 +78,7 @@ fn look_color(sample_uv: vec2f, phase: f32) -> vec3f {
     let t = phase*6.283185307;
     let drift = vec2f(cos(t),sin(t))*settings.energy;
     let seed = f32(settings.seed % 997u)*0.71;
-    let light = library_look(settings.look, uv, t, drift, seed);
+    let light = motion_look(settings.look, uv, t, drift, seed);
     var body = light.x;
     var glow = light.y;
     let vignette = max(0.38, 1.0-dot(uv-0.5,uv-0.5)*1.28);
@@ -120,6 +120,5 @@ fn render(@builtin(global_invocation_id) id: vec3u) {
     if (any(id.xy >= settings.size)) { return; }
     let uv = (vec2f(id.xy)+0.5)/vec2f(settings.size);
     let color = text_layer(color_mode(finish_color(uv, settings.surface.x),uv),uv);
-    let dither = (hash(vec2f(id.xy))-0.5)/255.0;
-    pixels[id.y*settings.size.x+id.x] = pack4x8unorm(vec4f(clamp(color+dither,vec3f(0),vec3f(1)),1));
+    pixels[id.y*settings.size.x+id.x] = pack4x8unorm(vec4f(clamp(color,vec3f(0),vec3f(1)),1));
 }

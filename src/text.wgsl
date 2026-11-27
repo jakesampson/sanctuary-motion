@@ -38,6 +38,10 @@ fn text_pattern(p: vec2f, style: u32, phase: f32) -> f32 {
     let inner=0.12+settings.text_shape.y*0.26;
     let spin=phase*6.2831853;
     var q=p;
+    // Curved treatments map text onto polar coordinates. Flip the glyph sampling
+    // so the warped letters stay upright/readable instead of mirrored.
+    var flip_x=false;
+    var flip_y=false;
 
     if mode==2u || (mode==0u && (style==0u || style>=30u)) {
         let line_step=min(0.23*size,0.80/f32(lines))*(0.80+spacing*0.40);
@@ -76,11 +80,30 @@ fn text_pattern(p: vec2f, style: u32, phase: f32) -> f32 {
         case 5u, 9u, 20u: {
             var v=radial;
             if style==20u { v.x=abs(v.x)-0.31; }
-            if style!=9u { v.y=min(v.y-0.15,0.0); }
+            var arch_gate=1.0;
+            if style!=9u {
+                // Fade out below the arch base instead of clamping to y=0.
+                // Clamping repeats one glyph row downward as vertical streaks.
+                let arch_y=v.y-0.15;
+                arch_gate=1.0-smoothstep(0.0,0.04,arch_y);
+                v.y=min(arch_y,0.0);
+            }
             let radius=length(v);
             let angle=atan2(v.y,v.x);
-            gate=smoothstep(inner-0.03,inner,radius)*(1.0-smoothstep(0.47,0.58,radius));
+            // Start arch text away from the folded centre; otherwise glyph rows
+            // are clipped into stacked fragments at the bottom seam.
+            let inner_gate=select(smoothstep(inner-0.03,inner,radius),
+                                  smoothstep(inner+0.05,inner+0.12,radius),style!=9u);
+            gate=arch_gate*inner_gate*(1.0-smoothstep(0.47,0.58,radius));
             q=vec2f(angle/6.2831853,radius-0.5);
+            // Upper arc: radial distance grows upward, so flip glyph vertical.
+            // Lower arc: angle runs right-to-left, so flip glyph horizontal.
+            if style==5u || style==20u || v.y<0.0 { flip_y=true; } else { flip_x=true; }
+            // Twin Arches folds both halves into one polar coordinate. Reverse
+            // the left half's arc coordinate instead of flipping each glyph:
+            // letterforms and word order stay forward, and the -1 offset makes
+            // the two halves meet seamlessly at the bottom centre.
+            if style==20u && radial.x<0.0 { q.x=-q.x-1.0; }
         }
         case 6u, 23u, 28u: {
             q=rotate_text(q,1.5707963);
@@ -115,7 +138,9 @@ fn text_pattern(p: vec2f, style: u32, phase: f32) -> f32 {
     var x=fract(q.x*repeats);
     if style==12u { x=fract(q.x*repeats+f32(row_id%2)*0.5); }
     if style==28u || style==29u { x=fract(q.x*repeats+0.05*sin(spin)); }
-    let stroke=glyph_line(line,vec2f((x-0.055)/0.89,(fract(row)-0.09)/mix(0.8,0.55,spacing)));
+    let glyph_x=select((x-0.055)/0.89,(0.945-x)/0.89,flip_x);
+    let glyph_y=select((fract(row)-0.09)/mix(0.8,0.55,spacing),(0.91-fract(row))/mix(0.8,0.55,spacing),flip_y);
+    let stroke=glyph_line(line,vec2f(glyph_x,glyph_y));
     return stroke*gate;
 }
 

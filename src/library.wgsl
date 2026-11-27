@@ -71,13 +71,47 @@ fn grid_cells(p: vec2f, cols: f32, rows: f32, gap: f32, seed: f32, phase: f32) -
     return vec2f(mask*lit*0.8, mask*lit*random);
 }
 
+// A restrained, loop-safe camera sway. `amount` comes from each look's own
+// Camera move / Motion amount / Flow slider; the caller passes it in.
+fn camera_shift(drift: vec2f, amount: f32, time: f32) -> vec2f {
+    return drift * (0.018 + amount * 0.075)
+        + vec2f(sin(time), cos(time)) * amount * 0.024;
+}
+
+// Fine animated texture for controls explicitly named Grain / Snow / Static.
+fn soft_grain(p: vec2f, strength: f32, time: f32, seed: f32) -> f32 {
+    let scale = mix(28.0, 96.0, clamp(strength, 0.0, 1.0));
+    let cell = floor(p * scale);
+    let frame = fract(floor(time / 6.283185307 * 4.0) / 4.0);
+    return strength * (hash(cell + vec2f(frame * 19.0, seed)) - 0.5) * 0.18;
+}
+
+// Small ink marks and light points shared by the editorial looks. All control
+// values are passed in by the calling case, so each look keeps its own sliders.
+fn ink_scene(p: vec2f, ink_x: f32, ink_y: f32, ink_size: f32, ink_layout: f32,
+             stop_move: f32, light_x: f32, light_y: f32, time: f32, seed: f32) -> vec2f {
+    let steps = round(mix(2.0, 12.0, clamp(stop_move, 0.0, 1.0)));
+    let frame = fract(floor(time / 6.283185307 * steps) / steps);
+    let jump = vec2f(sin(frame * 6.283185307), cos(frame * 6.283185307)) * 0.018;
+    let scale = mix(3.0, 12.0, clamp(ink_layout / 30.0, 0.0, 1.0));
+    let g = (p + vec2f(ink_x, ink_y) * 0.1 + jump) * scale;
+    let cell = floor(g);
+    let f = fract(g) - 0.5;
+    let h = hash(cell + seed * 0.31);
+    let center = (vec2f(hash(cell + 1.7), hash(cell + 5.3)) - 0.5) * 0.5;
+    let radius = mix(0.06, 0.4, clamp(ink_size / 2.5, 0.0, 1.0)) * (0.65 + 0.35 * h);
+    let ink = smoothstep(radius, radius * 0.35, length(f - center)) * step(0.42, h);
+    let lp = p - vec2f(light_x, light_y) * 0.12 - vec2f(0.08, -0.06);
+    let lights = exp(-26.0 * dot(lp, lp));
+    return vec2f(ink * 0.55 + lights * 0.16, ink * 0.3 + lights * 0.42);
+}
+
 fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec2f {
     let q = uv-0.5;
     let aspect = settings.composition;
     let p = q*vec2f(max(1.0,aspect),max(1.0,1.0/aspect));
     let r = length(p);
     let a = atan2(p.y,p.x);
-    let cam = drift * (0.35 + t(3u)*1.4);
     switch look {
         case 0u: { // Aurora · Folds / Height / Shimmer
             let folds = t(0u);
@@ -134,31 +168,52 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
         case 7u: { // Laser Planes
             let n = max(1.0, round(t(5u)));
             let origin = vec2f(0.0, mix(-0.55, 0.2, t(8u)));
-            let v = p-origin;
+            let v = p-origin-camera_shift(drift, t(3u), time);
             let ray = pow(0.5+0.5*cos(atan2(v.y,v.x)*n*2.0+drift.y*t(6u)+seed), mix(3.0,18.0,1.0-t(7u)));
             let taper = exp(-length(v)*1.6)*(0.4+t(1u)*mist(v*5.0));
-            return vec2f(taper*(0.2+ray)*t(0u), taper*ray*t(2u));
+            return vec2f(taper*(0.2+ray)*t(0u), taper*ray*t(2u))
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
-        case 8u: { // Planet Rise
+        case 8u: { // Planet Rise — every Studio control drives the image
             let size = mix(0.18, 0.48, t(5u));
-            let v = vec2f(p.x, p.y-mix(-0.15,0.45,t(8u)));
-            let d = length(v)-size;
+            let detail = t(1u);
+            let camera = t(3u);
+            let grain = t(4u);
+            // Camera move: seamless drift over the loop.
+            let shift = vec2f(
+                drift.x * mix(0.0, 0.09, camera),
+                drift.y * mix(0.0, 0.11, camera) + 0.035 * sin(time) * camera
+            );
+            let v = vec2f(p.x, p.y - mix(-0.15, 0.45, t(8u))) - shift;
+            let d = length(v) - size;
             let rim = emitter(d, t(2u));
-            let atmo = band(d-mix(0.02,0.12,t(6u)), 0.08)*t(6u);
-            let rings = band(abs(v.y)-size*0.15, mix(0.01,0.05,t(7u)))*t(7u)*step(abs(v.x), size*1.4);
-            return (rim+vec2f(atmo,atmo)+vec2f(rings*0.4,rings))*mix(0.45,1.4,t(0u));
+            // Surface detail: bands on the disc that travel with the camera.
+            let surface = (1.0 - smoothstep(-0.01, 0.01, d))
+                * pow(0.5 + 0.5 * sin(v.y * mix(14.0, 54.0, detail) + 1.7 * sin(time + v.x * 3.0)), 3.0)
+                * detail * 0.55;
+            let atmo = band(d - mix(0.02, 0.12, t(6u)), 0.08) * t(6u);
+            let rings = band(abs(v.y) - size * 0.15, mix(0.01, 0.05, t(7u))) * t(7u) * step(abs(v.x), size * 1.4);
+            // Grain: fine animated texture across the planet and atmosphere.
+            let speckle = grain * hash(floor(v * mix(24.0, 90.0, grain)) + floor(fract(time / 6.283185307) * 3.0) + seed) * 0.12;
+            return (rim + vec2f(atmo, atmo) + vec2f(rings * 0.4, rings) + vec2f(surface * 0.55, surface))
+                * mix(0.45, 1.4, t(0u)) + vec2f(speckle);
         }
-        case 9u: { // Light Corridor
+        case 9u: { // Light Corridor — Travel sets the number of frames per loop
             var light = vec2f(0);
-            let frames = 7.0;
-            for (var i=0u; i<7u; i++) {
+            let frames = clamp(round(t(8u)), 2.0, 8.0);
+            let shift = camera_shift(drift, t(3u), time);
+            let travel = fract(time / 6.283185307 * frames);
+            for (var i=0u; i<8u; i++) {
                 let index = f32(i);
+                if index >= frames { break; }
                 let size = 0.33*pow(0.75,index)*(0.8+t(6u)*0.5);
-                let v = p+vec2f(0,0.014*index);
+                let v = p - shift + vec2f(0, 0.06*index/max(1.0,frames-1.0) + 0.035*(travel-0.5));
                 let d = box_distance(v,vec2f(size*mix(0.8,1.6,t(7u)),size), mix(0.0,0.04,t(5u)));
                 light = max(light,emitter(d,0.91-index*0.065)*(0.95-index*0.075));
             }
-            return light*mix(0.5,1.4,t(0u))+vec2f(0.0, t(2u)*band(p.y+0.45,0.08));
+            let haze = vec2f(mist(p*2.0+drift*0.3+seed), mist(p*2.4+seed)*1.2)*t(1u)*0.16;
+            return (light*mix(0.5,1.4,t(0u))+haze+vec2f(soft_grain(p,t(4u),time,seed)))
+                + vec2f(0.0, t(2u)*band(p.y+0.45,0.08));
         }
         case 10u: { // Glass Stack
             var output = vec2f(0);
@@ -174,34 +229,58 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             }
             return output;
         }
-        case 11u: { // Long Exposure
+        case 11u: { // Long Exposure — Forms layers several streak shapes
             let v = rotate2(p, t(1u));
             let streaks = t(0u);
-            let d = v.x + 0.14*sin(v.y*streaks+drift.y*t(4u));
-            return emitter(d, mix(0.2,0.9,t(2u))) * vec2f(1.0, mix(0.4,1.2,t(2u)));
+            let forms = clamp(round(t(3u)), 1.0, 4.0);
+            var output = vec2f(0);
+            for (var n=0u; n<4u; n++) {
+                let i = f32(n);
+                if i >= forms { break; }
+                let d = v.x + 0.14*sin(v.y*streaks+drift.y*t(4u)+i*1.7) + i*0.045;
+                output = max(output, emitter(d, mix(0.2,0.9,t(2u)))
+                    * vec2f(1.0, mix(0.4,1.2,t(2u))) * (1.0-i*0.12));
+            }
+            return output;
         }
         case 12u: { // Glass Fins
             var output = vec2f(0);
             let fins = clamp(round(t(5u)), 3.0, 13.0);
+            let shift = camera_shift(drift, t(3u), time);
             for (var n=0u; n<13u; n++) {
                 if f32(n) >= fins { break; }
                 let i=f32(n)-(fins-1.0)*0.5;
-                var v=p-vec2f(i*mix(0.04,0.12,t(8u)),0);
+                var v=p-shift-vec2f(i*mix(0.04,0.12,t(8u)),0);
                 v.x += v.y*0.16;
                 let size=vec2f(mix(0.008,0.04,t(6u)), mix(0.12,0.36,t(7u)));
                 let d=box_distance(v,size,0.008);
                 output=max(output,vec2f(1.0-smoothstep(-0.02,0.014,d),band(d,0.02))*mix(0.4,1.3,t(0u)));
             }
-            return output+vec2f(t(2u)*0.12, t(1u)*0.2);
+            return output+vec2f(t(2u)*0.12, t(1u)*0.2)+vec2f(soft_grain(p,t(4u),time,seed));
         }
-        case 13u: { // Glass Torus
+        case 13u: { // Glass Torus — every Studio control shapes the glass
+            let exposure = t(0u);
+            let dispersion = t(1u);
+            let tint = t(2u);
+            let shift = camera_shift(drift, t(3u), time);
+            let v = p-shift;
+            let flat = mix(1.0, 0.42, t(8u));
+            let vp = vec2f(v.x, v.y/flat);
+            let rv = length(vp);
+            let av = atan2(vp.y, vp.x);
             let radius = mix(0.16, 0.42, t(5u));
-            let thick = mix(0.02, 0.12, t(6u));
-            let twist = t(7u);
-            let wave = 0.034*sin(a*twist+drift.y);
-            let rim = r-radius-wave*t(8u);
-            let facet = 0.25+0.75*pow(cos(a*3.0+drift.x),2.0);
-            return vec2f(band(rim,thick*1.6),band(rim,thick*0.35))*facet*mix(0.5,1.4,t(0u));
+            let thick = mix(0.012, 0.10, t(6u));
+            let twist = av*max(1.0, round(t(7u)))*3.14159265;
+            let wave = thick*0.45*sin(twist+drift.y);
+            let rim = rv-radius-wave;
+            let facet = 0.2+0.8*pow(0.5+0.5*cos(twist+drift.x), mix(1.0,7.0,1.0-tint));
+            let split = band(rim+dispersion*0.012, thick*1.7)-band(rim-dispersion*0.012, thick*1.7);
+            let core = band(rim, thick*0.35);
+            let warmth = 0.8+tint*0.4;
+            return (vec2f(band(rim,thick*1.8)+split*0.35,
+                          core*mix(0.5,1.4,1.0-dispersion)+split*0.2)
+                    * facet * vec2f(1.0/warmth, warmth) * mix(0.45,1.4,exposure))
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 14u: { // Hanging Blades
             var output = vec2f(0);
@@ -209,7 +288,7 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             for (var n=0u; n<14u; n++) {
                 if f32(n) >= blades { break; }
                 let i=f32(n)-(blades-1.0)*0.5;
-                let chase = sin(time*max(0.5,t(3u))+i)*t(1u)*0.08;
+                let chase = sin(time*round(max(1.0,t(3u)))+i)*t(1u)*0.08;
                 let v = p.yx-vec2f(i*0.065,i*0.028+chase);
                 let size=vec2f(0.015, mix(0.12,0.38,t(4u))-abs(i)*0.02);
                 let d=box_distance(v,size,0.009);
@@ -227,24 +306,30 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let v = (p+vec2f(0, -t(2u)*0.35))*vec2f(1.0/mix(0.2,1.4,t(0u)), 1.0/mix(0.05,1.0,t(1u)));
             let d=(length(v)-0.31)/2.0;
             let fill=1.0-smoothstep(-0.02,0.01,d);
-            return vec2f(fill*0.7+band(d,0.04), fill*t(3u)+band(d,0.01));
+            let floor_glow = band(p.y+mix(0.42,0.12,t(4u)), 0.035)*t(4u)*0.3;
+            return vec2f(fill*0.7+band(d,0.04)+floor_glow, fill*t(3u)+band(d,0.01)+floor_glow*0.6);
         }
         case 17u: { // Bottom Glow
             let h = mix(0.04, 0.55, t(0u));
             let soft = mix(0.04, 0.22, t(1u));
             let breathe = 0.85+0.15*sin(time*2.0)*t(2u);
-            return vec2f(band(1.0-uv.y-0.05, h)*breathe, band(1.0-uv.y, soft)*breathe);
+            let sway = t(3u)*0.055*sin(time)+drift.x*t(3u)*0.03;
+            let glow = band(1.0-uv.y-0.05-sway*p.x*2.0, h)*breathe;
+            let edge = band(abs(q.x)-0.42, 0.03)*t(4u)*0.05;
+            return vec2f(glow+edge, band(1.0-uv.y, soft)*breathe+edge);
         }
         case 18u: { // Linear Drift
             let dir = rotate2(q, t(0u));
-            let ramp=smoothstep(-t(1u), t(1u), dir.x+0.24*drift.x*t(2u));
+            let ramp=smoothstep(-t(1u), t(1u), dir.x+0.24*drift.x*t(2u)+t(3u)*0.22);
             let contrast = mix(0.6, 1.6, t(4u));
             return vec2f(pow(ramp,contrast)*0.82, pow(ramp,contrast+0.6)*0.60);
         }
         case 19u: { // Edge Light
-            let thick = t(0u);
+            let thick = mix(0.02, 0.13, t(0u));
             let d=min(0.5-abs(q.x),0.5-abs(q.y));
-            return vec2f(band(d, mix(0.04,0.18,t(1u))), band(d, mix(0.01,0.05,1.0-t(1u)))) * (0.7+t(2u)*0.4);
+            let pulse = 0.7+t(2u)*0.4*(0.75+0.25*sin(time));
+            let fog = mist(p*3.0+drift*0.2+seed)*t(3u)*0.22;
+            return vec2f(band(d, thick)+fog, band(d, mix(0.01,0.05,1.0-t(1u)))+fog*0.6)*pulse;
         }
         case 20u: { // Mesh
             let n = max(3.0, t(0u));
@@ -259,7 +344,7 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
         }
         case 21u: { // Bloom Bars
             let bars = max(2.0, t(0u));
-            let slat = pow(0.5+0.5*cos(p.x*bars*1.8+time*t(2u)*4.0), mix(2.0,10.0,1.0-t(1u)));
+            let slat = pow(0.5+0.5*cos(p.x*bars*1.8+time*round(t(2u)*4.0)), mix(2.0,10.0,1.0-t(1u)));
             return vec2f(slat*0.76, slat*0.9)*band(p.y,0.42);
         }
         case 22u: { // Halo
@@ -287,49 +372,86 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let d=min(box_distance(v,vec2f(mix(0.01,0.05,t(1u)), mix(0.18,0.42,t(0u))),0.006),
                       box_distance(v+vec2f(0, mix(-0.05,0.16,t(2u))),vec2f(mix(0.12,0.28,t(0u)),0.021),0.005));
             let spokes=pow(0.5+0.5*cos(a*mix(8.0,28.0,t(3u))+drift.x),7.0)*exp(-6.0*r)*t(3u);
-            return emitter(d,t(2u))+vec2f(spokes*0.67, (1.0-smoothstep(-0.008,0.005,d))*0.64);
+            return emitter(d,t(2u))+vec2f(spokes*0.67, (1.0-smoothstep(-0.008,0.005,d))*0.64)
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 26u: { // Silhouette Cross
-            let v=p+vec2f(0,0.025);
-            let d=min(box_distance(v,vec2f(0.024,0.32),0.006), box_distance(v+vec2f(0,0.087),vec2f(0.18,0.021),0.005));
+            let size_scale = mix(0.7, 1.35, t(0u));
+            let thick = mix(0.012, 0.05, t(1u));
+            let v = p/size_scale+vec2f(0,0.025);
+            let d=min(box_distance(v,vec2f(thick,0.32),0.006), box_distance(v+vec2f(0,0.087),vec2f(0.18,thick),0.005));
             let solid=1.0-smoothstep(-0.008,0.005,d);
             let spokes=pow(0.5+0.5*cos(a*21.0+drift.x),7.0)*exp(-6.0*r)*t(3u);
-            return (emitter(d,t(2u))+vec2f(spokes,spokes*0.34))*(1.0-solid*0.85);
+            return (emitter(d,t(2u))+vec2f(spokes,spokes*0.34))*(1.0-solid*0.85)
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 27u: { // Glass Cross
-            let v=p+vec2f(0,0.025);
-            let d=min(box_distance(v,vec2f(mix(0.016,0.05,t(6u)), mix(0.2,0.38,t(5u))), mix(0.0,0.02,t(10u))),
-                      box_distance(v+vec2f(0,0.08),vec2f(mix(0.12,0.24,t(5u)), mix(0.014,0.04,t(6u))),0.005));
-            return emitter(d,t(0u))*vec2f(0.7,0.5+0.5*sin(p.y*18.0+drift.y));
+            let shift = camera_shift(drift, t(3u), time);
+            let sway = t(8u)*0.03*sin(time*2.0);
+            let v=p-shift+vec2f(sway,0.025);
+            let size = mix(0.8, 1.3, t(5u));
+            let d=min(box_distance(v,vec2f(mix(0.016,0.05,t(6u)), mix(0.2,0.38,t(5u)))/size, mix(0.0,0.02,t(10u))),
+                      box_distance(v+vec2f(0,0.08),vec2f(mix(0.12,0.24,t(5u)), mix(0.014,0.04,t(6u)))/size,0.005));
+            let facet = 0.5+0.5*sin(p.y*18.0+drift.y);
+            let depth = 1.0+t(7u)*0.5*sin(p.x*9.0+time);
+            let material = 0.7+0.3*sin(t(9u)*1.7+p.x*3.0);
+            let backlight = mist(p*mix(2.0,5.0,t(2u))+drift*0.2+seed)*t(1u)*0.22;
+            let dispersion = band(d, mix(0.01,0.05,t(2u)))*t(2u)*0.12;
+            return emitter(d,t(0u))*vec2f(0.7*depth, (0.5+0.5*facet)*material)
+                + vec2f(backlight+dispersion, backlight*0.8+dispersion)
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 28u: { // Curtain Streaks · Cross
             let curtain=pow(0.5+0.5*cos(p.x*mix(40.0,160.0,t(0u))), mix(4.0,14.0,t(1u)))*band(p.y,0.33);
-            let v=p+vec2f(0,0.025);
-            let d=min(box_distance(v,vec2f(0.024,0.32),0.006), box_distance(v+vec2f(0,0.087),vec2f(0.18,0.021),0.005));
-            return vec2f(curtain*0.58,curtain*0.32)+emitter(d,0.77)*t(4u);
+            let v=(p+vec2f(0,0.025))/mix(0.7,1.5,t(3u));
+            let cross_d=min(box_distance(v,vec2f(0.024,0.32),0.006), box_distance(v+vec2f(0,0.087),vec2f(0.18,0.021),0.005));
+            let ring_d=abs(length(v)-0.28);
+            let diamond_d=abs(v.x)+abs(v.y)-0.31;
+            let bars_d=max(abs(fract(v.x*4.0)-0.5)*0.18, abs(v.y)-0.27);
+            var shape_d = cross_d;
+            let shape = round(t(2u));
+            if shape < 0.5 { shape_d = cross_d; }
+            else if shape < 1.5 { shape_d = ring_d; }
+            else if shape < 2.5 { shape_d = diamond_d; }
+            else { shape_d = bars_d; }
+            let breath = 1.0+t(5u)*0.3*sin(time*(1.0+round(t(6u))));
+            let soft = mix(0.006, 0.05, t(7u));
+            let mark = vec2f(band(shape_d,soft)*0.7, band(shape_d,soft*0.3))*t(4u)*breath;
+            return (vec2f(curtain*0.58,curtain*0.32)+mark)*mix(0.5,1.5,t(8u));
         }
-        case 29u: { // Light Threads
-            return vec2f(band(p.y+0.11*sin(p.x*6.0+drift.x), mix(0.08,0.3,t(7u)))*0.2, drifting_lights(p, time, seed, true)*t(0u));
+        case 29u: { // Light Threads — Light play sets the thread width, Exposure sets level
+            let width = mix(0.08, 0.3, t(1u));
+            let threads = band(p.y+0.11*sin(p.x*6.0+drift.x), width)*0.2;
+            return vec2f(threads*t(2u), drifting_lights(p, time, seed, true)*t(0u)*t(2u));
         }
         case 30u: { // Snow Glint
             let fine=drifting_lights(p, time+0.4,seed,true)*t(0u);
-            return vec2f(band(q.y-0.45,0.13)*t(1u), fine+drifting_lights(p+drift*0.04,time,seed+3.0,true)*t(3u));
+            let warmth = mix(0.7, 1.3, t(2u));
+            return vec2f(band(q.y-0.45,0.13)*t(1u)*warmth,
+                fine+drifting_lights(p+drift*0.04,time,seed+3.0,true)*t(3u))
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 31u: { // Embers & Snow
-            let embers=drifting_lights(p*0.9, time*mix(0.4,2.2,t(3u)), seed, false)*t(0u);
-            let snow=drifting_lights(p+vec2f(0,time*0.2), time, seed+8.0, true)*t(1u);
-            return vec2f(embers*0.45+snow*0.2, embers+snow*0.6)* (0.6+t(2u));
+            let embers=drifting_lights(p*0.9, time*round(mix(1.0,4.0,t(3u))), seed, false)*t(0u);
+            let snow=drifting_lights(p+vec2f(0,0.12*sin(time)), time, seed+8.0, true)*t(1u);
+            return vec2f(embers*0.45+snow*0.2, embers+snow*0.6)* (0.6+t(2u))
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 32u: { // Amber Bokeh
             let bokeh=drifting_lights(p*mix(0.5,1.2,t(3u)),time,seed,false)*t(0u);
-            return vec2f(bokeh*0.45, bokeh*(0.6+t(2u))+drifting_lights(p*2.0,time,seed+2.0,true)*t(1u));
+            return vec2f(bokeh*0.45, bokeh*(0.6+t(2u))+drifting_lights(p*2.0,time,seed+2.0,true)*t(1u))
+                * mix(0.5,1.4,t(4u));
         }
         case 33u: { // Breathing Stars
-            let cells=p*mix(8.0, 22.0, t(5u));
+            let cells=(p+vec2f(t(6u)*0.06*sin(time), t(6u)*0.04*cos(time)))*mix(8.0, 22.0, t(5u));
             let center = fract(cells)-0.5;
-            let twinkle=pow(0.5+0.5*sin(hash(floor(cells)+seed)*6.2831853+time*t(4u)),3.0);
+            let key = hash(floor(cells)+seed);
+            let twinkle=pow(0.5+0.5*sin(key*6.2831853+time*round(mix(1.0,3.0,t(4u)))),3.0);
             let star=band(center.x, mix(0.02,0.08,t(8u)))*band(center.y,0.18)+band(center.y,0.03)*band(center.x,0.18);
-            return vec2f(drifting_lights(p,time,seed,true)*t(0u)*0.2, star*twinkle*t(1u));
+            let amount = star*twinkle*t(1u)*step(1.0-t(7u), key);
+            let halo = band(length(center),0.2)*t(2u)*twinkle*step(1.0-t(7u), key);
+            return vec2f(drifting_lights(p,time,seed,true)*t(0u)*0.2+halo*0.3, amount+halo)
+                * mix(0.5,1.5,t(3u));
         }
         case 34u: { // Dot Curtain
             let dots = max(12.0, t(0u));
@@ -361,43 +483,64 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
         case 38u: { // Block Wall
             let cols = max(4.0, t(0u));
             let rows = max(3.0, t(1u));
-            return grid_cells(p, cols, rows, t(4u), seed, time*t(2u))*vec2f(t(3u)+0.4, 1.0);
+            return grid_cells(p, cols, rows, t(4u), seed, time*round(mix(1.0,3.0,t(2u))))*vec2f(t(3u)+0.4, 1.0);
         }
         case 39u: { // Panel Mosaic
             return grid_cells(p, t(0u), mix(4.0,18.0,t(3u)), t(1u), seed, time)*vec2f(0.7+t(4u), 0.5+t(2u));
         }
         case 40u: { // Silk Light
-            let ribbon = emitter(p.y+0.14*sin(p.x*mix(1.0,6.0,t(7u))+drift.y)*t(6u), t(1u));
-            return max(ribbon, emitter(p.y-0.17*sin(p.x*3.0)+0.12, 0.54))*mix(0.5,1.4,t(0u));
+            let ribbons = clamp(round(t(5u)), 1.0, 3.0);
+            var light = emitter(p.y-0.17*sin(p.x*3.0)+0.12, 0.54);
+            let width = mix(0.01, 0.07, t(10u))*mix(0.7,1.4,t(2u));
+            for (var n=0u; n<3u; n++) {
+                let i = f32(n);
+                if i >= ribbons { break; }
+                let off = (i-(ribbons-1.0)*0.5)*mix(0.08,0.3,t(8u));
+                let d = p.y-off+0.14*sin(p.x*mix(1.0,6.0,t(7u))+time*round(t(3u)*2.0)+drift.y)*t(6u);
+                light = max(light, vec2f(band(d,width), band(d,0.012)*t(1u)));
+            }
+            let tint = mix(0.7, 1.3, t(9u));
+            return light*vec2f(1.0/tint, tint)*mix(0.5,1.4,t(0u))
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 41u: { // Caustic Depths
-            let haze=mist(p*4.0+drift*mix(0.2,1.2,t(3u))+seed);
+            let haze=mist(p*mix(2.0,6.0,t(1u))+drift*mix(0.2,1.2,t(3u))+seed);
             let caustic=pow(0.5+0.5*sin(p.x*22.0+4.0*haze+drift.x+p.y*1.2), mix(3.0, 11.0, t(2u)));
-            return vec2f(caustic*haze,caustic*haze*haze)*mix(0.4,1.4,t(0u));
+            return vec2f(caustic*haze,caustic*haze*haze)*mix(0.4,1.4,t(0u))
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 42u: { // Deep Field
-            let haze=mist(p*mix(2.0,7.0,t(1u))+drift*0.6+seed);
-            return vec2f(haze*mix(0.4,1.2,t(0u)), smoothstep(0.45,0.72,haze)*t(2u));
+            let flow = camera_shift(drift, t(3u), time);
+            let haze=mist(p*mix(2.0,7.0,t(1u))+flow*0.6+seed);
+            return vec2f(haze*mix(0.4,1.2,t(0u)), smoothstep(0.45,0.72,haze)*t(2u))
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 43u: { // Volume Rays
-            return radial_rays(p-vec2f(-0.22,-0.48), mix(4.0, 22.0, t(2u)), mix(0.3,1.0,t(1u)), 0.35, seed, drift*t(3u))*mix(0.4,1.5,t(0u));
+            return radial_rays(p-vec2f(-0.22,-0.48), mix(4.0, 22.0, t(2u)), mix(0.3,1.0,t(1u)), 0.35, seed, drift*t(3u))*mix(0.4,1.5,t(0u))
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 44u: { // Ramp Squares
             var light = vec2f(0);
             for (var i=0u; i<7u; i++) {
                 let index = f32(i);
                 let size = mix(0.12,0.4,t(5u))*pow(0.75,index);
-                let v = p+vec2f(sin(index+drift.y)*size*0.22,0);
+                let spin = t(7u)*index*0.35*sin(time+index);
+                let v = rotate2(p, spin)+vec2f(sin(index+time*round(t(3u)*2.0)+drift.y)*size*0.22,0);
                 let d = box_distance(v,vec2f(size), mix(0.0,0.08,t(6u)));
-                light = max(light,emitter(d,0.9-index*0.08));
+                light = max(light,emitter(d,0.9-index*0.08)+vec2f(band(d,0.006)*t(2u)*0.5));
             }
-            return light*mix(0.5,1.5,t(0u));
+            let tint = mix(0.6, 1.5, fract(t(8u)/7.0));
+            return light*vec2f(1.0/tint, tint)*mix(0.5,1.5,t(0u))*mix(0.6,1.4,t(1u))
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 45u: { // Glass Ripple
-            let wave = 0.034*sin(a*mix(2.0,12.0,t(5u))+drift.y)+0.012*cos(a*9.0);
+            let wave = 0.034*sin(a*mix(2.0,12.0,t(5u))+drift.y+time*round(t(3u)*2.0))+0.012*cos(a*9.0);
             let optical = pow(0.5+0.5*cos(mix(20.0, 80.0, t(6u))*(r+wave)+drift.x),4.0);
-            let falloff=1.0-smoothstep(0.27,0.43,r);
-            return vec2f(optical*falloff,optical*falloff*(0.49+t(2u)))*mix(0.5,1.4,t(0u));
+            let falloff=1.0-smoothstep(mix(0.2,0.32,t(1u)), mix(0.34,0.5,t(1u)), r);
+            let rings = band(r-0.2*floor(mix(0.0,1.0,t(7u))*5.0)/5.0, 0.02)*t(7u)*0.2;
+            let tint = mix(0.7, 1.4, fract(t(8u)/7.0));
+            return vec2f(optical*falloff+rings, optical*falloff*(0.49+t(2u))+rings*0.6)
+                *vec2f(1.0/tint,tint)*mix(0.5,1.4,t(0u))+vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 46u: { // Rings
             let waves = pow(0.5+0.5*cos(r*t(0u)*2.5+drift.x), t(2u))*exp(-t(1u)*r);
@@ -416,7 +559,7 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let radius = t(0u)*0.4;
             let dots = pow(0.5+0.5*cos(a*t(1u)+drift.x),6.0);
             let d = r-radius;
-            let tilt = rotate2(p, t(3u));
+            let tilt = rotate2(p, t(3u))*vec2f(1.0, 1.0+0.55*sin(radians(t(3u))));
             return vec2f(band(d,0.044)*0.35,band(d, mix(0.008,0.03,t(2u)))*dots*0.75)*step(length(tilt)-0.02, radius+0.08);
         }
         case 50u: { // Phase Rings
@@ -425,13 +568,13 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
         }
         case 51u: { // Wire Sphere
             let s = t(0u);
-            let v=p/max(0.2,s*0.5);
+            let v=rotate2(p, t(2u))/max(0.2,s*0.5);
             let z=sqrt(max(0.0,1.0-dot(v,v)));
             let longitude=atan2(v.x,z);
             let latitude=asin(clamp(v.y,-1.0,1.0));
             let line=max(band(fract((longitude+drift.x*0.34)*t(1u)*0.25)-0.5,0.09),band(fract(latitude*t(1u)*0.25)-0.5,0.085));
             let mask=(1.0-smoothstep(0.96,1.0,length(v)))*0.82;
-            return vec2f(line,line)*mask*t(2u);
+            return vec2f(line,line)*mask*0.8;
         }
         case 52u: { // Wire Cube
             var distance=10.0;
@@ -514,7 +657,7 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let f=fract(grid)-0.5;
             let random=hash(floor(grid)+seed);
             let trace=select(band(f.x,0.038),band(f.y,0.038),random>0.5);
-            let pulse = 0.5+0.5*sin(time*mix(1.0,8.0,t(1u))+random*20.0)*t(2u);
+            let pulse = 0.5+0.5*sin(time*round(mix(1.0,9.0,t(1u)))+random*20.0)*t(2u);
             return vec2f(trace*step(0.48,random), trace*pulse);
         }
         case 61u: { // Ripple Floor
@@ -524,16 +667,38 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             return vec2f(ground*0.85, ground*t(1u));
         }
         case 62u: { // Chalk Smear
-            let v=vec2f(p.x+p.y*0.8,p.y);
+            let steps = round(mix(2.0, 10.0, t(4u)));
+            let frame = fract(floor(time / 6.283185307 * steps) / steps);
+            let jump = vec2f(frame*0.05, -frame*0.03);
+            let v=vec2f(p.x+p.y*0.8,p.y)+jump;
             let stroke=mist(v*vec2f(mix(12.0, 60.0, t(3u)/16.0),5.0)+drift*t(2u)+seed);
             let mark=smoothstep(0.36,0.72,stroke*mist(p*3.0)*1.55)*t(0u);
-            return vec2f(mark*0.58, mark*t(1u)+t(5u)*hash(floor(p*80.0)));
+            return vec2f(mark*0.58, mark*t(1u)+t(5u)*hash(floor(p*80.0)+frame*11.0));
         }
         case 63u: { // Failing Ceiling
-            return grid_cells(p, mix(4.0,16.0,t(5u)), mix(3.0,12.0,t(5u)), 0.12, seed, time*t(3u))*vec2f(t(0u), t(2u))*(0.5+t(8u)*hash(floor(p*9.0)+floor(time*2.0)));
+            let ceiling_layout = round(t(6u));
+            let cols = mix(4.0,16.0,t(5u))*(1.0+0.12*ceiling_layout);
+            let rows = mix(3.0,12.0,t(5u))*(1.0-0.08*ceiling_layout);
+            let shift = camera_shift(drift, t(7u), time);
+            let speed = round(mix(1.0, 5.0, t(3u)))*round(mix(1.0, 3.0, t(10u)));
+            let cells = grid_cells(p-shift, cols, rows, 0.12, seed, time*speed);
+            let behind = mist(p*mix(2.0,6.0,t(9u)/3.0)+drift*0.2+seed)*t(9u)*0.12;
+            let dim = 0.5+t(8u)*hash(floor(p*9.0)+floor(fract(time / 6.283185307)*2.0));
+            return (cells*vec2f(t(0u), t(2u))+vec2f(behind))*mix(0.6,1.4,t(1u))*dim
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
-        case 64u: { // Office Ceiling
-            return grid_cells(p, 12.0, 8.0, 0.08, seed, time)*vec2f(t(0u)+0.3, t(1u)+0.3);
+        case 64u: { // Office Ceiling — sliders now drive the ceiling grid and its motion
+            let ceiling_layout = round(t(6u));
+            let size = mix(6.0, 20.0, t(5u));
+            let cols = size*(1.0+0.1*ceiling_layout);
+            let rows = size*0.68*(1.0-0.08*ceiling_layout);
+            let shift = camera_shift(drift, t(7u), time);
+            let speed = round(mix(1.0, 5.0, t(3u)))*round(mix(1.0, 3.0, t(10u)));
+            let cells = grid_cells(p-shift, cols, rows, 0.08, seed, time*speed);
+            let behind = band(p.y+0.24, 0.14)*t(9u)*0.16;
+            let dim = mix(1.0, 0.45, t(8u));
+            return (cells*vec2f(t(0u)+0.3, t(1u)+0.3+t(2u)*0.4)+vec2f(behind))*dim
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 65u: { // Rays
             return radial_rays(p-vec2f(0.0, t(1u)*0.5), t(0u), t(2u), 0.55, seed, drift);
@@ -551,7 +716,10 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             return vec2f(lines*0.55, lines)*smoothstep(-0.2, 0.5, 0.4-abs(v.y));
         }
         case 68u: { // Hidden Light
-            return opening_mask(p, t(0u), t(4u))*vec2f(0.8, t(2u));
+            let shift = camera_shift(drift, t(1u), time);
+            let roundness = clamp(t(4u)+t(5u)*0.25*sin(time), 0.0, 1.0);
+            let spill = vec2f(t(2u)*band(p.y+0.42+0.08*sin(time)*t(3u), 0.1), t(2u)*0.4);
+            return opening_mask(p-shift, t(0u), roundness)*vec2f(0.8, t(2u))+spill;
         }
         case 69u: { // Sky Opening
             return opening_mask(p-vec2f(0,0.12), t(0u), t(1u))+vec2f(t(2u)*band(p.y+0.42,0.1), t(2u)*0.4);
@@ -587,35 +755,62 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
         case 74u: { // Water Curtain
             let flow = mist(vec2f(p.x*5.0,p.y*mix(2.0,9.0,t(5u)))+drift*t(4u)+seed);
             let streaks = pow(0.5+0.5*cos(p.x*mix(20.0,90.0,t(5u))), 8.0);
-            return vec2f(flow*t(0u)+streaks*0.3, streaks*t(1u)+flow*t(7u));
+            let shape = round(t(6u));
+            var back = drifting_lights(p,time,seed+5.0,false);
+            if shape < 0.5 { back = drifting_lights(p,time,seed+5.0,false); }
+            else if shape < 1.5 { back = pow(0.5+0.5*cos(p.x*12.0+drift.x),4.0); }
+            else { back = pow(0.5+0.5*cos(a*8.0),6.0)*exp(-2.0*r); }
+            return vec2f(flow*t(0u)+streaks*0.3+back*t(2u)*0.22,
+                streaks*t(1u)+flow*t(7u)+back*t(2u)*0.3)
+                + vec2f(soft_grain(p,t(3u),time,seed));
         }
         case 75u: { // Event Horizon
+            let shift = camera_shift(drift, t(3u), time);
+            let v = p-shift;
+            let rv = length(v);
             let radius = mix(0.16, 0.42, t(5u));
-            let d = r-radius;
-            let disk = band(p.y-p.x*mix(-0.4,0.4,t(6u)),0.028)*exp(-9.0*abs(p.x))*t(7u);
-            return emitter(d, 0.7+t(2u))+vec2f(disk,disk*0.60)*step(radius*0.72,r);
+            let d = rv-radius;
+            let disk = band(v.y-v.x*mix(-0.4,0.4,t(6u)),0.028)*exp(-9.0*abs(v.x))*t(7u);
+            let stars = drifting_lights(v,time,seed+7.0,true)*t(1u);
+            let heat = band(v.y,0.05)*t(8u)*0.18;
+            return (emitter(d, 0.7+t(2u))+vec2f(disk,disk*0.60)*step(radius*0.72,rv)
+                + vec2f(stars*0.16, stars)+vec2f(heat,heat*0.4))*mix(0.5,1.5,t(0u))
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 76u: { // Static Glass
             let d=box_distance(p,vec2f(0.38,0.18),0.03);
             let inside=1.0-smoothstep(-0.01,0.013,d);
-            let stat = hash(floor(p*mix(20.0,120.0,t(1u))+floor(time*12.0*t(9u))))*t(1u);
-            return vec2f(inside*t(0u)+stat, inside*t(3u)+stat*0.4);
+            let stat = hash(floor(p*mix(20.0,120.0,t(1u)))+floor(fract(time / 6.283185307)*round(mix(2.0,12.0,t(9u)))))*t(1u);
+            let smoke = mist(p*mix(2.0,5.0,t(2u))+drift*0.2+seed)*t(2u)*0.2;
+            let marks = ink_scene(p,t(5u),t(6u),t(7u),t(8u),t(9u),t(10u),t(11u),time,seed);
+            return vec2f(inside*t(0u)+stat+smoke, inside*t(3u)+stat*0.4+smoke*0.6)
+                + marks + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 77u: { // Scan Bands
             let scan=pow(0.5+0.5*cos(p.y*mix(20.0, 220.0, t(0u))+drift.x*2.0),5.0)*t(1u);
             let sweep=band(p.y-0.26*drift.y, mix(0.04,0.2,t(2u)));
-            return vec2f(scan*0.4+sweep*0.5, scan*sweep+t(3u)*mist(p*3.0));
+            let marks = ink_scene(p,t(5u),t(6u),t(7u),t(8u),t(9u),t(10u),t(11u),time,seed);
+            return vec2f(scan*0.4+sweep*0.5, scan*sweep+t(3u)*mist(p*3.0))
+                + marks + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 78u: { // Scan Panel
             let d=box_distance(p,vec2f(0.38,0.18),0.03);
             let inside=1.0-smoothstep(-0.01,0.013,d);
             let scan=pow(0.5+0.5*cos(p.y*170.0+drift.x*2.0),5.0)*t(1u);
-            return vec2f(inside*t(0u)+scan*0.38, inside*scan+band(d,0.014)*t(3u));
+            let sweep=band(p.y-0.3*drift.y+0.08*sin(time)*t(2u), 0.03)*t(2u);
+            let lp = p-vec2f(t(5u),t(6u))*0.12-vec2f(0.08,-0.06);
+            let lights = exp(-26.0*dot(lp,lp));
+            return vec2f(inside*t(0u)+scan*0.38+sweep*0.3+lights*0.16,
+                inside*scan+band(d,0.014)*t(3u)+sweep*0.5+lights*0.42)
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 79u: { // Two Inks
-            let haze=mist(p*4.0+vec2f(t(5u),t(6u))+seed);
-            let ink=smoothstep(0.34,0.57,haze)*t(0u);
-            return vec2f(ink*0.65,(1.0-ink)*haze*t(2u));
+            let rolled = rotate2(p, t(1u)*18.0);
+            let haze=mist(rolled*4.0+vec2f(t(5u),t(6u))+seed);
+            let ink=smoothstep(0.34,0.57,haze)*t(0u)+t(3u)*pow(0.5+0.5*cos(rolled.x*90.0),6.0)*0.18;
+            let marks = ink_scene(p,t(5u),t(6u),t(7u),t(8u),t(9u),t(10u),t(11u),time,seed);
+            return vec2f(ink*0.65,(1.0-ink)*haze*t(2u))+marks
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 80u: { // Smoke Columns
             let n = max(3.0, t(0u));
@@ -623,15 +818,20 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             for (var i=0u; i<9u; i++) {
                 if f32(i) >= n { break; }
                 let x = (f32(i)-(n-1.0)*0.5)*0.16;
-                smoke += mist(vec2f((p.x-x)*8.0, p.y*3.0+time*t(2u))+seed)*exp(-abs(p.x-x)*6.0);
+                smoke += mist(vec2f((p.x-x)*8.0, p.y*3.0+0.5*sin(time)*t(2u))+seed)*exp(-abs(p.x-x)*6.0);
             }
-            return vec2f(smoke*t(1u), smoke*0.5+t(3u)*hash(p*40.0));
+            let marks = ink_scene(p,t(5u),t(6u),t(7u),t(8u),t(9u),t(10u),t(11u),time,seed);
+            return vec2f(smoke*t(1u), smoke*0.5+t(3u)*hash(p*40.0))+marks
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 81u: { // Ink Halftone
             let haze=mist(p*4.0+vec2f(t(5u),t(6u))*0.4+seed);
             let dots=length(fract(p*mix(24.0, 90.0, t(1u)))-0.5);
             let mask=1.0-smoothstep(haze*0.55-0.06,haze*0.55+0.04,dots);
-            return vec2f(mask*haze*t(0u), mask*haze*t(2u));
+            let scan = pow(0.5+0.5*cos(p.y*90.0),4.0)*t(3u)*0.2;
+            let marks = ink_scene(p,t(5u),t(6u),t(7u),t(8u),t(9u),t(10u),t(11u),time,seed);
+            return vec2f(mask*haze*t(0u)+scan, mask*haze*t(2u))+marks
+                + vec2f(soft_grain(p,t(4u),time,seed));
         }
         case 82u: { // Gradient Sweep
             let v = rotate2(q, t(0u)*50.0+drift.x*20.0);
@@ -663,7 +863,7 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let n = t(0u);
             for (var i=0u; i<8u; i++) {
                 if f32(i) >= n { break; }
-                rings += band(length(p-c)-f32(i)*0.08 - fract(time)*0.2, mix(0.01,0.06,t(1u)));
+                rings += band(length(p-c)-f32(i)*0.08 - fract(time / 6.283185307)*0.2, mix(0.01,0.06,t(1u)));
             }
             return vec2f(rings*0.6, rings);
         }
@@ -734,14 +934,38 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             return vec2f(cols*t(3u)*0.5+t(2u)*mist(p*3.0)*0.3, cols*t(3u));
         }
         case 97u, 98u: { // Advent paintings as lit canvas — not a copy of the source art
-            let canvas = 0.18+0.22*mist(p*mix(3.0, 9.0, t(6u))+seed);
-            let wash = smoothstep(-0.4, 0.5, p.y+t(1u)*0.2)*t(0u);
-            let shaft = exp(-3.5*pow(p.x*1.2,2.0))*t(2u)*(0.75+0.25*sin(time*3.0)*t(4u));
-            let warmth = t(3u)*band(p.y+0.2, 0.3);
-            let bloom = t(7u)*mist(p*2.0+drift);
+            let variant = f32(look - 97u);
+            let qv = p + vec2f(variant * 0.13, -variant * 0.09);
+            let canvas = 0.18+0.22*mist(qv*mix(3.0, 9.0, t(6u))+seed);
+            let wash = smoothstep(-0.4, 0.5, qv.y+t(1u)*0.2)*t(0u);
+            let shaft = exp(-3.5*pow((qv.x + variant * 0.1)*1.2,2.0))*t(2u)*(0.75+0.25*sin(time*3.0)*t(4u));
+            let warmth = t(3u)*band(qv.y+0.2, 0.3);
+            let bloom = t(7u)*mist(qv*2.0+drift);
             let body = canvas+wash*0.45+shaft*0.55+warmth*0.2;
             return vec2f(body, shaft+bloom+t(5u)*0.3);
         }
         default: { return vec2f(0); }
     }
+}
+
+// Looks whose geometry is otherwise static still need to respond to the Motion
+// tab, so give them a small seamless camera sway and light pulse.
+const static_looks = array<u32, 32>(
+    9u, 12u, 15u, 16u, 17u, 19u, 22u, 23u, 24u, 28u,
+    47u, 51u, 54u, 55u, 59u, 66u, 67u, 68u, 69u, 70u,
+    71u, 72u, 73u, 75u, 79u, 81u, 89u, 91u, 92u, 93u,
+    94u, 95u
+);
+
+fn motion_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec2f {
+    var static_look = false;
+    for (var i = 0u; i < 32u; i++) {
+        if (look == static_looks[i]) { static_look = true; break; }
+    }
+    if (!static_look) { return library_look(look, uv, time, drift, seed); }
+    let amount = length(drift);
+    if (amount < 0.001) { return library_look(look, uv, time, drift, seed); }
+    let sway = drift * 0.014 + vec2f(sin(time), cos(time)) * 0.006 * amount;
+    let light = library_look(look, uv + sway, time, drift, seed);
+    return light * max(0.0, 1.0 + 0.10 * amount * sin(time + seed));
 }

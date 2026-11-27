@@ -24,7 +24,7 @@ export const initialColor: ColorSettings = {
   gradient: [[168, 41, 113], [112, 62, 172], [54, 120, 204], [132, 225, 241]], layout: 0,
 };
 export const initialAnimation: AnimationSettings = {
-  cycles: 1, movement: 1, scale: 1, shiftX: 0, shiftY: 0, stopFps: 0, ease: 0,
+  cycles: 3, movement: 1.25, scale: 1, shiftX: 0, shiftY: 0, stopFps: 0, ease: 0.3,
 };
 
 const palettes: [string, Ramp][] = [
@@ -238,17 +238,17 @@ export function MotionPanel({ animation, duration, motion, onAnimation, onDurati
     <div className="segments" aria-label="Motion preset">
       {['Quiet', 'Gentle', 'Full'].map((label, index) => <button key={label} aria-pressed={motion === index} onClick={() => onMotion(index)}>{label}</button>)}
     </div>
-    <RangeControl name="Speed" value={animation.cycles} min={0} max={4} defaultValue={initialAnimation.cycles}
+    <RangeControl name="Speed" value={animation.cycles} min={0} max={8} defaultValue={initialAnimation.cycles}
       label={animation.cycles === 0 ? 'Still' : animation.cycles + (animation.cycles === 1 ? ' cycle per loop' : ' cycles per loop')}
       onChange={cycles => update({ cycles })} />
     <RangeControl name="Duration" value={duration} min={1} max={60} defaultValue={defaultDuration} label={duration + ' s'} onChange={onDuration} />
-    <RangeControl name="Movement" value={animation.movement} min={0} max={2} step={0.01} defaultValue={initialAnimation.movement}
+    <RangeControl name="Movement" value={animation.movement} min={0} max={3} step={0.01} defaultValue={initialAnimation.movement}
       label={percent(animation.movement)} onChange={movement => update({ movement })} />
     <details><summary>Framing and timing<ResetControl name="framing and timing" onReset={() => update({
       scale: initialAnimation.scale, shiftX: initialAnimation.shiftX, shiftY: initialAnimation.shiftY,
       stopFps: initialAnimation.stopFps, ease: initialAnimation.ease,
     })} /></summary>
-      <RangeControl name="Scale" value={animation.scale} min={0.5} max={3} step={0.01} defaultValue={initialAnimation.scale}
+      <RangeControl name="Scale" value={animation.scale} min={0.5} max={5} step={0.01} defaultValue={initialAnimation.scale}
         label={percent(animation.scale)} onChange={scale => update({ scale })} />
       <RangeControl name="Horizontal shift" value={animation.shiftX} min={-0.5} max={0.5} step={0.01} defaultValue={initialAnimation.shiftX}
         label={animation.shiftX === 0 ? 'Centered' : percent(animation.shiftX)} onChange={shiftX => update({ shiftX })} />
