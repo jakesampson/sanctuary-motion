@@ -36,6 +36,7 @@ h2 { font-size: .98rem; font-weight: 650; }
   gap: 1rem;
 }
 .identity, .top-actions { display: flex; align-items: center; gap: .6rem; min-width: 0; }
+.top-actions .reset-all:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
 .identity > div { min-width: 0; }
 .identity p { color: var(--muted); font-size: .78rem; margin-top: .22rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mark {
@@ -125,6 +126,7 @@ input[type=checkbox], input[type=range], progress { accent-color: var(--accent);
 .range-control span { display: flex; justify-content: space-between; gap: .45rem; }
 .range-control output { color: var(--muted); }
 .range-control input { width: 100%; margin: .08rem 0; }
+.range-control.disabled { opacity: .48; }
 .ramp-choices, .color-fields { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(7rem,100%),1fr)); gap: .5rem; }
 .ramp-choices button { display: grid; gap: .3rem; padding: .4rem; font-size: .81rem; text-align: left; }
 .ramp-swatch { height: 1.2rem; border-radius: .3rem; }
@@ -161,6 +163,12 @@ details > :not(summary) { margin-top: .8rem; }
   position: absolute; top: .8rem; right: 0; z-index: 1;
 }
 .collapsible-section summary { padding-right: 2.4rem; }
+.control-motion-panel { display: grid; gap: .85rem; margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+.control-motion-panel .card-heading { margin: 0; }
+.control-motion-panel .hint { margin: -.35rem 0 0; font-size: .8rem; line-height: 1.4; color: var(--muted); }
+.control-motion-group { display: grid; gap: .7rem; }
+.control-motion-group .group-heading { display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+.control-motion-group h3 { margin: 0; font-size: .88rem; font-weight: 600; color: var(--muted); }
 .export-area { display: grid; gap: .65rem; }
 .primary { background: var(--accent); color: #112420; border-color: var(--accent); font-weight: 740; }
 .primary:hover:not(:disabled) { background: #caffe8; border-color: #caffe8; }

@@ -42,6 +42,7 @@ pub struct Scene {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct AnimationSettings {
+    pub enabled: bool,
     pub cycles: u32,
     pub movement: f32,
     pub scale: f32,
@@ -54,6 +55,7 @@ pub struct AnimationSettings {
 impl Default for AnimationSettings {
     fn default() -> Self {
         Self {
+            enabled: false,
             cycles: 3,
             movement: 1.25,
             scale: 1.0,
@@ -400,7 +402,11 @@ impl Target {
             }
             self.text_key = key;
         }
-        let motion_phase = scene.animation.phase(phase, scene.duration);
+        let motion_phase = if scene.animation.enabled {
+            scene.animation.phase(phase, scene.duration)
+        } else {
+            0.0
+        };
         let params = Params {
             size: [self.width, self.height],
             look: scene.look,
@@ -430,7 +436,7 @@ impl Target {
                 scene.look,
                 &scene.look_tune.values,
                 &scene.look_tune.motions,
-                scene.look_tune.auto,
+                scene.look_tune.auto && scene.animation.enabled,
                 motion_phase,
             )),
             finish_tune: pack_finish(tune::bake(
@@ -438,7 +444,7 @@ impl Target {
                 scene.finish,
                 &scene.finish_tune.values,
                 &scene.finish_tune.motions,
-                scene.finish_tune.auto,
+                scene.finish_tune.auto && scene.animation.enabled,
                 motion_phase,
             )),
             seed: scene.seed,
@@ -506,14 +512,14 @@ mod tests {
 
     #[test]
     fn phase_ease_zero_is_identity() {
-        let s = AnimationSettings { cycles: 1, movement: 1.0, scale: 1.0, shift_x: 0.0, shift_y: 0.0, stop_fps: 0, ease: 0.0 };
+        let s = AnimationSettings { enabled: true, cycles: 1, movement: 1.0, scale: 1.0, shift_x: 0.0, shift_y: 0.0, stop_fps: 0, ease: 0.0 };
         // With ease=0 and no stop_fps, phase should be unchanged.
         assert!((s.phase(0.25f32, 15) - 0.25f32).abs() < 1e-9);
     }
 
     #[test]
     fn phase_ease_one_is_smoothstep() {
-        let s = AnimationSettings { cycles: 1, movement: 1.0, scale: 1.0, shift_x: 0.0, shift_y: 0.0, stop_fps: 0, ease: 1.0 };
+        let s = AnimationSettings { enabled: true, cycles: 1, movement: 1.0, scale: 1.0, shift_x: 0.0, shift_y: 0.0, stop_fps: 0, ease: 1.0 };
         let p = s.phase(0.25f32, 15);
         // With waves ≈ 25, sin(waves*phase) ≈ sin(6.28) ≈ 0, so phase ≈ 0.25.
         let expected = 0.25;
@@ -522,7 +528,7 @@ mod tests {
 
     #[test]
     fn phase_stop_fps_quantizes() {
-        let s = AnimationSettings { cycles: 1, movement: 1.0, scale: 1.0, shift_x: 0.0, shift_y: 0.0, stop_fps: 8, ease: 0.0 };
+        let s = AnimationSettings { enabled: true, cycles: 1, movement: 1.0, scale: 1.0, shift_x: 0.0, shift_y: 0.0, stop_fps: 8, ease: 0.0 };
         // duration=15, stop_fps=8 → steps = 15*8 = 120. quantize phase.
         let out = s.phase(0.0f32, 15);
         // After quantization, value must be in [0, steps-1]/steps = [0,119]/120 ≈ 0.9917

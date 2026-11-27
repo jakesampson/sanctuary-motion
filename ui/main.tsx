@@ -54,6 +54,7 @@ const initial: Scene = {
   seed: 1, motion: 1, intensity: 0.75,
   colors: thumbnailPalettes[0].colors, width: 1920, height: 1080, fps: 30, duration: 15,
 };
+const freshScene = (): Scene => structuredClone(initial);
 const projectFilter = { name: 'Sanctuary Motion project', extensions: ['sanctuary'] };
 
 function draw(canvas: HTMLCanvasElement, bytes: ArrayBuffer, width: number, height: number) {
@@ -277,6 +278,30 @@ function App() {
     } catch (cause) { setError(String(cause)); }
   }
 
+  function resetAll() {
+    if (busy || overlayBusy) return;
+    setScene(freshScene());
+    setStep(0);
+    setLyrics(false);
+    setPlaying(true);
+    setTextPlaying(true);
+    setTextReset(value => value + 1);
+    setOverlayName('');
+    setOverlayFit(false);
+    setOverlayRevision(value => value + 1);
+    setIncludeText(true);
+    setIncludeOverlay(true);
+    setCustom(false);
+    setFormat('mp4');
+    setName('Untitled project');
+    setError('');
+    setNotice('Fresh scene ready.');
+    setProgress(0);
+    setCancelling(false);
+    dialog.current?.close();
+    void invoke('clear_overlay').catch(cause => setError(String(cause)));
+  }
+
   async function exportFile() {
     if (busy) return;
     setBusy(true);
@@ -343,6 +368,8 @@ function App() {
       <div className="top-actions">
         <button onClick={openProject}>Open<span className="wide"> project</span></button>
         <button onClick={saveProject}>Save<span className="wide"> project</span></button>
+        <button className="reset-all" title="Reset every setting and start a fresh scene"
+          disabled={busy || overlayBusy} onClick={resetAll}>Reset all</button>
       </div>
     </header>
     <main>
@@ -378,6 +405,10 @@ function App() {
           {step === 2 && <ColorPanel colors={scene.colors} color={scene.color}
             onChange={(colors, color) => setScene(prev => ({ ...prev, colors, color }))} />}
           {step === 3 && <MotionPanel animation={scene.animation} duration={scene.duration} motion={scene.motion}
+            lookName={looks[scene.look]} finishName={finishes[scene.finish][0]}
+            lookSpec={lookTune[scene.look]} lookTune={scene.lookTune}
+            finishSpec={finishTune[scene.finish]} finishTune={scene.finishTune}
+            onLookTune={value => update('lookTune', value)} onFinishTune={value => update('finishTune', value)}
             onAnimation={value => update('animation', value)} onDuration={value => update('duration', value)}
             onMotion={value => update('motion', value)} />}
           {step === 4 && <TextPanel look={scene.look} finish={scene.finish} Thumbnail={Thumbnail} text={scene.text}

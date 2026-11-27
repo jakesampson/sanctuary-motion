@@ -1,4 +1,4 @@
-use sanctuary_render::{Renderer, Scene, FINISH_TUNE, LOOK_TUNE};
+use sanctuary_render::{AnimationSettings, Renderer, Scene, FINISH_TUNE, LOOK_TUNE};
 
 fn scene_with_value(kind: &str, index: u32, control: usize, value: f32) -> Scene {
     let table = if kind == "look" { LOOK_TUNE } else { FINISH_TUNE };
@@ -10,6 +10,7 @@ fn scene_with_value(kind: &str, index: u32, control: usize, value: f32) -> Scene
         height: 216,
         look: if kind == "look" { index } else { 20 },
         finish: if kind == "finish" { index } else { 0 },
+        animation: AnimationSettings { enabled: true, ..AnimationSettings::default() },
         ..Scene::default()
     };
     let tune = if kind == "look" {

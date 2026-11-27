@@ -84,7 +84,7 @@ export function TextPanel({ look, finish, Thumbnail, text, onChange, playing, on
       </select></label>
       <label className="toggle"><input type="checkbox" checked={text.uppercase} onChange={event => update({ uppercase: event.target.checked })} /> All caps</label>
     </div>
-    <RangeControl name="Text size" value={text.size} min={0.25} max={3} step={0.01} defaultValue={initialText.size}
+    <RangeControl name="Font size (all lines)" value={text.size} min={0.25} max={3} step={0.01} defaultValue={initialText.size}
       label={percent(text.size)} onChange={size => update({ size })} />
     <CollapsibleSection title="Text appearance and timing" name="text appearance and timing" onReset={() => update({
       cycles: initialText.cycles, density: initialText.density, innerSize: initialText.innerSize,

@@ -6,7 +6,7 @@ export type TuneSpec = { auto: boolean; controls: TuneControl[] };
 export type TuneSettings = { values: number[]; motions: number[]; auto: boolean };
 export const emptyTune = (): TuneSettings => ({ values: [], motions: [], auto: false });
 function specTune(spec: TuneSpec): TuneSettings {
-  return { values: spec.controls.map(c => c.value), motions: spec.controls.map(c => c.motion ?? 0), auto: spec.auto };
+  return { values: spec.controls.map(c => c.value), motions: spec.controls.map(c => c.motion ?? 0), auto: false };
 }
 export const lookTune: TuneSpec[] = [
 {auto:true,controls:[{label:'Folds',min:0.5,max:5.0,step:0.1,value:2.8, motion: 0.5},{label:'Height',min:-0.5,max:1.0,step:0.02,value:0.26, motion: 0.5},{label:'Shimmer',min:0.0,max:1.0,step:0.02,value:0.5, motion: 0.5}]},

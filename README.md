@@ -9,11 +9,11 @@ Get the latest stable [Windows, macOS Intel, and macOS Apple Silicon builds from
 ## Make a loop
 
 1. Choose a **Look**, then apply an optional surface **Finish**.
-2. Set **Color** and **Motion**. Use **Text** to create an optional title, ticker, scroll, or patterned text layer. **Preview lyrics** is a separate readability guide.
+2. Set **Color**, then turn on **Apply motion** on the **Motion** page and fine tune how it moves. Use **Text** to create an optional title, ticker, scroll, or patterned text layer. **Preview lyrics** is a separate readability guide.
 3. In **Screen**, pick a size or enter exact pixels. Add a local PNG, JPEG or vector SVG overlay if you need a logo or frame.
 4. Choose **Export background** and save an MP4 loop or PNG still. Use the export checkboxes to include the text and image layers. The editor preserves existing output files.
 
-Use **Save project** to keep a reusable design in a local `.sanctuary` file. The sample lyrics show in the preview only. Image overlays stay attached to the current app session. The app renders and encodes media on the machine.
+Use **Save project** to keep a reusable design in a local `.sanctuary` file, or **Reset all** in the top bar to start a fresh scene. The sample lyrics show in the preview only. Image overlays stay attached to the current app session. The app renders and encodes media on the machine.
 
 ## Build locally
 

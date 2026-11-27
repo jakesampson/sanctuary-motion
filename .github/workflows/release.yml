@@ -52,9 +52,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: Sanctuary Motion v1.0
+          releaseName: Sanctuary Motion v1.0.1
           releaseBody: |
-            Sanctuary Motion 1.0 — an offline desktop studio for seamless worship backgrounds.
+            Sanctuary Motion 1.0.1 — an offline desktop studio for seamless worship backgrounds.
+
+            This patch makes motion opt-in, moves all fine-tune motion controls to the Motion page, adds Reset all, and gives every text effect one shared font size with a legible Letter Rain treatment.
 
             **Downloads**
             - Windows 11 (x64 NSIS installer)

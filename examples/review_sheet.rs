@@ -1,5 +1,5 @@
 use image::{Rgb, RgbImage};
-use sanctuary_render::{write_png, Renderer, Scene, TextSettings, TuneSettings, FINISH_COUNT, LOOK_COUNT};
+use sanctuary_render::{write_png, AnimationSettings, Renderer, Scene, TextSettings, TuneSettings, FINISH_COUNT, LOOK_COUNT};
 use std::{fs, io::BufWriter};
 
 const SMALL_W: u32 = 192;
@@ -51,6 +51,7 @@ fn main() -> Result<(), String> {
             look: index,
             look_tune: auto_tune(),
             finish_tune: auto_tune(),
+            animation: AnimationSettings { enabled: true, ..AnimationSettings::default() },
             ..Scene::default()
         };
         let frame = small.frame(&scene, 0.23)?;
@@ -68,6 +69,7 @@ fn main() -> Result<(), String> {
             text: text(0.58),
             look_tune: auto_tune(),
             finish_tune: auto_tune(),
+            animation: AnimationSettings { enabled: true, ..AnimationSettings::default() },
             ..Scene::default()
         };
         let frame = small.frame(&scene, 0.23)?;
@@ -88,6 +90,7 @@ fn main() -> Result<(), String> {
                 text: text(size),
                 look_tune: auto_tune(),
                 finish_tune: auto_tune(),
+                animation: AnimationSettings { enabled: true, ..AnimationSettings::default() },
                 ..Scene::default()
             };
             let frame = large.frame(&scene, 0.23)?;

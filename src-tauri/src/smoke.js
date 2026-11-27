@@ -36,10 +36,53 @@ async function runSmoke({ dir, fullDisk, missingEncoder }) {
     assert(true, 'Look thumbnails painted');
     const preview = document.querySelector('.preview-surface canvas');
     const sample = () => preview.getContext('2d').getImageData(0, 0, preview.width, preview.height).data;
+    const changed = (a, b) => a.some((value, index) => value !== b[index]);
     const initial = sample();
     await sleep(450);
     const later = sample();
-    assert(initial.some((value, index) => later[index] !== value), 'Live preview animated through native IPC');
+    assert(!changed(initial, later), 'Preview stays still until motion is applied');
+    assert(!document.body.textContent.includes('Control motion'), 'Look page has no control motion subpanel');
+    document.querySelectorAll('.editor-steps button')[3].click();
+    await waitFor(() => [...document.querySelectorAll('label.toggle')]
+      .some(label => label.textContent.includes('Apply motion')), 'Motion page did not load.');
+    assert(document.body.textContent.includes('Fine tune motion'), 'Fine tune motion lives on the Motion page');
+    const applyMotionLabel = [...document.querySelectorAll('label.toggle')]
+      .find(label => label.textContent.includes('Apply motion'));
+    const applyMotion = applyMotionLabel.querySelector('input');
+    assert(applyMotion && !applyMotion.checked, 'Motion is off by default');
+    const fineTune = () => [...document.querySelectorAll('input[type=range]')]
+      .filter(input => (input.getAttribute('aria-label') ?? '').includes(' motion'));
+    assert(fineTune().length > 0 && fineTune().every(input => input.disabled),
+      'Fine tune sliders wait for motion to be applied');
+    const beforeEnable = sample();
+    applyMotion.click();
+    await waitFor(() => changed(beforeEnable, sample()), 'Applying motion did not animate the preview.');
+    assert(fineTune().every(input => !input.disabled), 'Fine tune sliders unlock when motion is applied');
+    assert(true, 'Live preview animates after motion is applied through native IPC');
+    document.querySelectorAll('.editor-steps button')[0].click();
+    await waitFor(() => document.querySelectorAll('.look').length > 1, 'Look gallery did not reload.');
+    document.querySelectorAll('.look')[1].click();
+    await waitFor(() => document.querySelectorAll('.look')[1].getAttribute('aria-pressed') === 'true',
+      'Look selection did not change before reset.');
+    const resetButton = [...document.querySelectorAll('.top-actions button')]
+      .find(button => button.textContent.trim() === 'Reset all');
+    assert(resetButton, 'Reset all button is in the top menu');
+    resetButton.click();
+    await waitFor(() => document.querySelector('.editor-steps button').getAttribute('aria-current') === 'step'
+      && document.querySelectorAll('.look')[0]?.getAttribute('aria-pressed') === 'true'
+      && document.querySelector('.topbar p').textContent === 'Untitled project',
+      'Reset all did not return to a fresh scene.');
+    const afterReset = sample();
+    await sleep(450);
+    assert(!changed(afterReset, sample()), 'Reset all leaves a still preview');
+    document.querySelectorAll('.editor-steps button')[3].click();
+    await waitFor(() => [...document.querySelectorAll('label.toggle')]
+      .some(label => label.textContent.includes('Apply motion')), 'Motion page did not reload after reset.');
+    const resetApply = [...document.querySelectorAll('label.toggle')]
+      .find(label => label.textContent.includes('Apply motion')).querySelector('input');
+    assert(!resetApply.checked, 'Reset all turns motion back off');
+    assert(fineTune().every(input => input.disabled), 'Reset all waits for motion to be applied again');
+    assert(true, 'Reset all restores a fresh scene');
     if (missingEncoder) {
       assert((await errorFrom(exportFile('missing-encoder.mp4'))).includes('bundled video encoder is missing'),
         'Missing encoder reports an actionable error');
@@ -55,7 +98,8 @@ async function runSmoke({ dir, fullDisk, missingEncoder }) {
 
     const legacy = await invoke('open_project', { path: file('legacy.sanctuary') });
     assert(legacy.look === 1 && legacy.finish === 0 && legacy.color.mode === 0 &&
-      legacy.animation.cycles === 1 && !legacy.text.enabled, 'Legacy projects default to their original appearance');
+      legacy.animation.cycles === 3 && !legacy.animation.enabled && !legacy.text.enabled,
+      'Legacy projects default to their original appearance with motion off');
     const edited = {
       ...scene, look: 68, finish: 6, seed: 12, motion: 2, width: 3840, height: 960,
       color: { ...legacy.color, mode: 2, layout: 1 },

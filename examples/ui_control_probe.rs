@@ -1,4 +1,4 @@
-use sanctuary_render::{Renderer, Scene};
+use sanctuary_render::{AnimationSettings, Renderer, Scene};
 
 fn base() -> Scene {
     Scene {
@@ -11,6 +11,7 @@ fn base() -> Scene {
             treatment: 8,
             ..sanctuary_render::TextSettings::default()
         },
+        animation: AnimationSettings { enabled: true, ..AnimationSettings::default() },
         ..Scene::default()
     }
 }
@@ -123,7 +124,7 @@ fn main() -> Result<(), String> {
     run("All caps", a.clone(), b, 0.23);
     let mut b = a.clone();
     b.text.size = 2.5;
-    run("Text size", a.clone(), b, 0.23);
+    run("Font size (all lines)", a.clone(), b, 0.23);
     let mut b = a.clone();
     b.text.cycles = 3;
     run("Text speed", a.clone(), b, 0.23);

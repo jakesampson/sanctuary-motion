@@ -1,5 +1,12 @@
-use sanctuary_render::{write_png, Overlay, Renderer, Scene};
+use sanctuary_render::{write_png, AnimationSettings, Overlay, Renderer, Scene};
 use std::{fs, path::Path, sync::Arc, time::Instant};
+
+fn animated() -> Scene {
+    Scene {
+        animation: AnimationSettings { enabled: true, ..AnimationSettings::default() },
+        ..Scene::default()
+    }
+}
 
 fn main() -> Result<(), String> {
     let renderer = Renderer::new()?;
@@ -10,7 +17,7 @@ fn main() -> Result<(), String> {
         let scene = Scene {
             width,
             height,
-            ..Scene::default()
+            ..animated()
         };
         let mut target = renderer.target(width, height)?;
         let first = target.frame(&scene, 0.0)?;
@@ -36,7 +43,7 @@ fn main() -> Result<(), String> {
                 width,
                 height,
                 look,
-                ..Scene::default()
+                ..animated()
             };
             let first = target.frame(&scene, 0.0)?;
             assert_ne!(first, target.frame(&scene, 0.25)?, "look {look} is static");
@@ -58,7 +65,7 @@ fn main() -> Result<(), String> {
     }
     let scene = Scene {
         look: 20,
-        ..Scene::default()
+        ..animated()
     };
     let mut target = renderer.target(384, 216)?;
     let mut finishes = Vec::new();
@@ -142,7 +149,7 @@ fn main() -> Result<(), String> {
 
 fn verify_motion(renderer: &Renderer) -> Result<(), String> {
     let mut target = renderer.target(384, 216)?;
-    let moving = Scene::default();
+    let moving = animated();
     let baseline = target.frame(&moving, 0.125)?;
     let mut faster = moving.clone();
     faster.animation.cycles = 2;

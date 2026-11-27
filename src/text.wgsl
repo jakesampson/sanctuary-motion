@@ -26,12 +26,32 @@ fn rotate_text(p: vec2f, a: f32) -> vec2f {
     return vec2f(c*p.x-s*p.y,s*p.x+c*p.y);
 }
 
+// The only source of font size. Rows and repeats add spacing around this
+// glyph height; they never change it.
+fn glyph_height() -> f32 {
+    return min(0.095*settings.text_layout.x,0.80/max(1.0,f32(settings.text_style.x)));
+}
+
+fn glyph_ratio(line: u32) -> f32 {
+    let slot=glyphs[line];
+    return f32(slot&65535u)/max(1.0,f32(slot>>16u));
+}
+
+fn glyph_width(line: u32, height: f32) -> f32 {
+    return clamp(height*glyph_ratio(line)*0.75/max(settings.composition,0.2),0.008,0.92);
+}
+
+fn centred(value: f32, window: f32, flip: bool) -> f32 {
+    let w=clamp(window,0.02,1.0);
+    let at=(value-(1.0-w)*0.5)/w;
+    return select(at,1.0-at,flip);
+}
+
 fn text_pattern(p: vec2f, style: u32, phase: f32) -> f32 {
     let lines=settings.text_style.x;
     let mode=settings.text_style.y;
     let density=settings.text_shape.x;
     let spacing=settings.text_shape.z;
-    let size=settings.text_layout.x;
     let aspect=settings.composition;
     let radial=p*vec2f(max(aspect,1.0),max(1.0,1.0/aspect));
     let r=length(radial);
@@ -42,34 +62,65 @@ fn text_pattern(p: vec2f, style: u32, phase: f32) -> f32 {
     // so the warped letters stay upright/readable instead of mirrored.
     var flip_x=false;
     var flip_y=false;
+    let height=glyph_height();
+    let pitch_y=height*(1.0+spacing*0.4);
+    let window_y=clamp(height/pitch_y,0.02,1.0);
+
+    // Letter Rain keeps glyphs upright in columns and drops them with a small
+    // stable per-column offset, instead of rotating and scrambling every row.
+    if mode==0u && style==28u {
+        let column_width=glyph_width(0u,height);
+        let column_cell=column_width*(1.0+spacing*0.25);
+        let columns=max(1.0,floor(1.0/column_cell));
+        let column=q.x*columns+floor(columns*0.5);
+        let column_id=i32(floor(column));
+        let count=i32(lines);
+        let line=u32((column_id%count+count)%count);
+        let width=glyph_width(line,height);
+        let cell_x=1.0/columns;
+        let glyph_x=centred(fract(column),clamp(width/cell_x,0.02,1.0),flip_x);
+        let drop_pitch=1.0/max(1.0,floor(1.0/(height*(1.0+spacing*0.25))));
+        let offset=hash(vec2f(f32(column_id),2.0))*0.35;
+        let y=fract(q.y/drop_pitch-phase*0.35+offset);
+        let glyph_y=centred(y,clamp(height/drop_pitch,0.02,1.0),false);
+        return glyph_line(line,vec2f(glyph_x,glyph_y));
+    }
 
     if mode==2u || (mode==0u && (style==0u || style>=30u)) {
-        let line_step=min(0.23*size,0.80/f32(lines))*(0.80+spacing*0.40);
         if style==45u && mode==0u { q.y+=0.012*sin(q.x*24.0+spin); }
-        let row = q.y/line_step+f32(lines)*0.5;
+        let row=q.y/pitch_y+f32(lines)*0.5;
         if row<0.0 || row>=f32(lines) { return 0.0; }
         let line=u32(row);
-        let slot=glyphs[line];
-        let ratio=f32(slot&65535u)/max(1.0,f32(slot>>16u));
-        let width=clamp(line_step*0.75*ratio/aspect,0.008,0.93);
-        return glyph_line(line,vec2f(0.5+q.x/width,(fract(row)-0.12)/0.76));
+        let width=glyph_width(line,height);
+        let glyph_x=select(0.5+q.x/width,0.5-q.x/width,flip_x);
+        return glyph_line(line,vec2f(glyph_x,centred(fract(row),window_y,flip_y)));
     }
     if mode==1u {
-        let height=min(0.13*size,0.36/f32(lines))*(0.8+spacing*0.4);
-        let row=(q.y-0.42)/height+f32(lines);
+        let row=(q.y-0.42)/pitch_y+f32(lines);
         if row<0.0 || row>=f32(lines) { return 0.0; }
-        return glyph_line(u32(row),vec2f(fract(q.x-phase+floor(row)*0.17),(fract(row)-0.12)/0.76));
+        let line=u32(row);
+        let width=glyph_width(line,height);
+        let cell=width*(1.0+spacing*0.25);
+        let x=fract((q.x-phase+floor(row)*0.17)/cell);
+        return glyph_line(line,vec2f(centred(x,width/cell,flip_x),centred(fract(row),window_y,flip_y)));
     }
     if mode==3u {
         let scroll=fract(q.y+0.5+phase);
         let row=scroll*f32(lines);
-        return glyph_line(u32(row),vec2f(q.x*1.35+0.5,(fract(row)-0.14)/(0.65*min(size,1.3))));
+        let line=u32(row);
+        let width=glyph_width(line,height);
+        let cell=width*(1.0+spacing*0.25);
+        let x=fract((q.x-phase*0.25+0.5)/cell);
+        return glyph_line(line,vec2f(centred(x,width/cell,flip_x),centred(fract(row),window_y,flip_y)));
     }
 
-    var rows=mix(11.0,31.0,density)/size;
+    // Density and spacing change the gaps between copies, never the glyph size.
+    let rows=max(1.0,floor(1.0/(height*mix(1.7,1.05,density))));
+    let pitch=1.0/rows;
+    let window=clamp(height/pitch,0.02,1.0);
     var gate=1.0;
     switch style {
-        case 2u: { rows*=0.56; }
+        case 2u: { gate=0.62+0.38*band(fract(q.y*rows*0.5)-0.5,0.22); }
         case 3u: { gate=0.45+0.55*fract((floor(q.x*10.0)+floor(q.y*8.0))*0.5)*2.0; }
         case 4u, 21u: {
             let strip=abs(q.x);
@@ -105,10 +156,9 @@ fn text_pattern(p: vec2f, style: u32, phase: f32) -> f32 {
             // the two halves meet seamlessly at the bottom centre.
             if style==20u && radial.x<0.0 { q.x=-q.x-1.0; }
         }
-        case 6u, 23u, 28u: {
+        case 6u, 23u: {
             q=rotate_text(q,1.5707963);
-            if style==23u { rows*=1.8; }
-            if style==28u { q.x+=fract(phase+hash(vec2f(floor(q.y*rows),2.0))); }
+            if style==23u { gate=0.68+0.32*band(fract(q.x*7.0)-0.5,0.18); }
         }
         case 7u: { gate=0.15+0.85*band(q.x-sin(spin)*0.32,0.145); }
         case 8u: { gate=0.30+0.70*pow(0.5+0.5*cos(spin+floor(q.y*rows)*1.34),2.0); }
@@ -132,14 +182,13 @@ fn text_pattern(p: vec2f, style: u32, phase: f32) -> f32 {
     let row_id=i32(floor(row));
     let count=i32(lines);
     let line=u32((row_id%count+count)%count);
-    let slot=glyphs[line];
-    let ratio=f32(slot&65535u)/max(1.0,f32(slot>>16u));
-    let repeats=max(1.0,round(rows*aspect/(max(0.7,ratio)*0.72+spacing)));
-    var x=fract(q.x*repeats);
-    if style==12u { x=fract(q.x*repeats+f32(row_id%2)*0.5); }
-    if style==28u || style==29u { x=fract(q.x*repeats+0.05*sin(spin)); }
-    let glyph_x=select((x-0.055)/0.89,(0.945-x)/0.89,flip_x);
-    let glyph_y=select((fract(row)-0.09)/mix(0.8,0.55,spacing),(0.91-fract(row))/mix(0.8,0.55,spacing),flip_y);
+    let width=glyph_width(line,height);
+    let cell=1.0/max(1.0,floor(1.0/(width*(1.0+spacing*0.25))));
+    var x=fract(q.x/cell);
+    if style==12u { x=fract(q.x/cell+f32(row_id%2)*0.5); }
+    if style==29u { x=fract(q.x/cell+0.05*sin(spin)); }
+    let glyph_x=centred(x,clamp(width/cell,0.02,1.0),flip_x);
+    let glyph_y=centred(fract(row),window,flip_y);
     let stroke=glyph_line(line,vec2f(glyph_x,glyph_y));
     return stroke*gate;
 }

@@ -1,4 +1,4 @@
-use sanctuary_render::{write_png, Renderer, Scene, TuneSettings};
+use sanctuary_render::{write_png, AnimationSettings, Renderer, Scene, TuneSettings};
 use std::{fs, io::BufWriter};
 
 const WIDTH: u32 = 640;
@@ -19,6 +19,7 @@ fn main() -> Result<(), String> {
             look,
             look_tune: auto_tune(),
             finish_tune: auto_tune(),
+            animation: AnimationSettings { enabled: true, ..AnimationSettings::default() },
             ..Scene::default()
         };
         let frame = target.frame(&scene, 0.23)?;

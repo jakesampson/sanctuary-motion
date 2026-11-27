@@ -1,4 +1,4 @@
-use sanctuary_render::{write_png, Renderer, Scene, TextSettings, TuneSettings};
+use sanctuary_render::{write_png, AnimationSettings, Renderer, Scene, TextSettings, TuneSettings};
 use std::{fs, io::BufWriter};
 
 const WIDTH: u32 = 480;
@@ -29,6 +29,7 @@ fn main() -> Result<(), String> {
             finish,
             look_tune: auto_tune(),
             finish_tune: auto_tune(),
+            animation: AnimationSettings { enabled: true, ..AnimationSettings::default() },
             ..Scene::default()
         };
         write_frame(
@@ -51,6 +52,7 @@ fn main() -> Result<(), String> {
                 },
                 look_tune: auto_tune(),
                 finish_tune: auto_tune(),
+                animation: AnimationSettings { enabled: true, ..AnimationSettings::default() },
                 ..Scene::default()
             };
             write_frame(

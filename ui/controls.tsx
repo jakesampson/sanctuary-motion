@@ -9,7 +9,7 @@ export type ColorSettings = {
   mode: number; glow: RGB | null; tint: RGB; amount: number; gradient: Ramp; layout: number;
 };
 export type AnimationSettings = {
-  cycles: number; movement: number; scale: number; shiftX: number; shiftY: number;
+  enabled: boolean; cycles: number; movement: number; scale: number; shiftX: number; shiftY: number;
   stopFps: number; ease: number;
 };
 
@@ -24,7 +24,7 @@ export const initialColor: ColorSettings = {
   gradient: [[168, 41, 113], [112, 62, 172], [54, 120, 204], [132, 225, 241]], layout: 0,
 };
 export const initialAnimation: AnimationSettings = {
-  cycles: 3, movement: 1.25, scale: 1, shiftX: 0, shiftY: 0, stopFps: 0, ease: 0.3,
+  enabled: false, cycles: 3, movement: 1.25, scale: 1, shiftX: 0, shiftY: 0, stopFps: 0, ease: 0.3,
 };
 
 const palettes: [string, Ramp][] = [
@@ -112,15 +112,15 @@ export function CollapsibleSection({ title, name, onReset, children }: {
   </div>;
 }
 
-export function RangeControl({ name, value, min, max, step = 1, label, defaultValue, onChange }: {
+export function RangeControl({ name, value, min, max, step = 1, label, defaultValue, onChange, disabled }: {
   name: string; value: number; min: number; max: number; step?: number; label: string;
-  defaultValue?: number; onChange: (value: number) => void;
+  defaultValue?: number; onChange: (value: number) => void; disabled?: boolean;
 }) {
-  const reset = defaultValue == null ? undefined : () => onChange(defaultValue);
-  return <label className="range-control" onDoubleClick={reset}>
+  const reset = defaultValue == null || disabled ? undefined : () => onChange(defaultValue);
+  return <label className={'range-control' + (disabled ? ' disabled' : '')} onDoubleClick={reset}>
     <span>{name}<output aria-hidden="true">{label}</output></span>
     <input aria-label={name} aria-valuetext={label} type="range" value={value} min={min} max={max} step={step}
-      onChange={event => onChange(event.target.valueAsNumber)} onDoubleClick={reset} />
+      disabled={disabled} onChange={event => onChange(event.target.valueAsNumber)} onDoubleClick={reset} />
   </label>;
 }
 
@@ -131,21 +131,13 @@ export function TunePanel({ title, spec, value, onChange }: {
 }) {
   if (spec.controls.length === 0) return null;
   const values = spec.controls.map((control, index) => value.values[index] ?? control.value);
-  const motions = spec.controls.map((control, index) => value.motions[index] ?? control.motion ?? 0);
   const setValue = (index: number, next: number) => {
     const copy = [...values];
     copy[index] = next;
-    onChange({ ...value, values: copy, motions });
-  };
-  const setMotion = (index: number, next: number) => {
-    const copy = [...motions];
-    copy[index] = next;
-    onChange({ ...value, values, motions: copy });
+    onChange({ ...value, values: copy });
   };
   const defaults = spec.controls.map(control => control.value);
-  const motionDefaults = spec.controls.map(control => control.motion ?? 0);
-  const resetSection = () => onChange({ values: defaults, motions: motionDefaults, auto: false });
-  const resetMotion = () => onChange({ ...value, values, motions: motionDefaults, auto: false });
+  const resetSection = () => onChange({ ...value, values: defaults });
   return <div className="tune-panel">
     <div className="card-heading">
       <h2>{title}</h2>
@@ -156,15 +148,6 @@ export function TunePanel({ title, spec, value, onChange }: {
         min={control.min} max={control.max} step={control.step} defaultValue={control.value}
         label={Number.isInteger(control.step) && control.step >= 1 ? String(values[index]) : percent((values[index]-control.min)/Math.max(0.0001, control.max-control.min))}
         onChange={next => setValue(index, next)} />)}
-    {spec.auto && <details>
-      <summary>Control motion<ResetControl name="control motion" onReset={resetMotion} /></summary>
-      <label className="toggle"><input type="checkbox" checked={value.auto}
-        onChange={event => onChange({ ...value, values, motions, auto: event.target.checked })} /> Let these controls move on their own</label>
-      {spec.controls.map((control, index) => control.motion == null ? null :
-        <RangeControl key={control.label + '-motion'} name={control.label + ' motion'} value={motions[index]}
-          min={0} max={1} step={0.01} defaultValue={control.motion ?? 0} label={percent(motions[index])}
-          onChange={next => setMotion(index, next)} />)}
-    </details>}
   </div>;
 }
 
@@ -235,41 +218,99 @@ export function ColorPanel({ colors, color, onChange }: {
   </div>;
 }
 
-export function MotionPanel({ animation, duration, motion, onAnimation, onDuration, onMotion }: {
+function ControlMotionGroup({ title, spec, value, onChange, disabled }: {
+  title: string; spec: TuneSpec; value: TuneSettings;
+  onChange: (value: TuneSettings) => void; disabled: boolean;
+}) {
+  if (!spec.controls.some(control => control.motion != null)) return null;
+  const values = spec.controls.map((control, index) => value.values[index] ?? control.value);
+  const motions = spec.controls.map((control, index) => value.motions[index] ?? control.motion ?? 0);
+  const motionDefaults = spec.controls.map(control => control.motion ?? 0);
+  const setMotion = (index: number, next: number) => {
+    const copy = [...motions];
+    copy[index] = next;
+    onChange({ ...value, values, motions: copy, auto: true });
+  };
+  return <div className="control-motion-group">
+    <div className="group-heading">
+      <h3>{title}</h3>
+      <ResetControl name={'reset ' + title + ' motion'} disabled={disabled}
+        onReset={() => onChange({ ...value, values, motions: motionDefaults })} />
+    </div>
+    {spec.controls.map((control, index) => control.motion == null ? null :
+      <RangeControl key={control.label + '-motion'} name={control.label + ' motion'} value={motions[index]}
+        min={0} max={1} step={0.01} defaultValue={control.motion} label={percent(motions[index])}
+        onChange={next => setMotion(index, next)} disabled={disabled} />)}
+  </div>;
+}
+
+export function MotionPanel({ animation, duration, motion, lookName, finishName, lookSpec, lookTune, finishSpec, finishTune,
+  onLookTune, onFinishTune, onAnimation, onDuration, onMotion }: {
   animation: AnimationSettings; duration: number; motion: number;
+  lookName: string; finishName: string;
+  lookSpec: TuneSpec; lookTune: TuneSettings; onLookTune: (value: TuneSettings) => void;
+  finishSpec: TuneSpec; finishTune: TuneSettings; onFinishTune: (value: TuneSettings) => void;
   onAnimation: (animation: AnimationSettings) => void; onDuration: (duration: number) => void; onMotion: (motion: number) => void;
 }) {
   const update = (value: Partial<AnimationSettings>) => onAnimation({ ...animation, ...value });
   const defaultDuration = 15;
   const defaultMotion = 1;
+  const motionDisabled = !animation.enabled;
+  const setMotionEnabled = (enabled: boolean) => {
+    onAnimation({ ...animation, enabled });
+    onLookTune({ ...lookTune, auto: enabled });
+    onFinishTune({ ...finishTune, auto: enabled });
+  };
   return <div className="step-content">
     <div className="card-heading">
       <h2>Motion</h2>
-      <ResetControl name="motion" onReset={() => { onAnimation(initialAnimation); onDuration(defaultDuration); onMotion(defaultMotion); }} />
+      <ResetControl name="motion" onReset={() => {
+        onAnimation(initialAnimation); onDuration(defaultDuration); onMotion(defaultMotion);
+        onLookTune({ ...lookTune, auto: false }); onFinishTune({ ...finishTune, auto: false });
+      }} />
     </div>
+    <label className="toggle"><input type="checkbox" checked={animation.enabled}
+      onChange={event => setMotionEnabled(event.target.checked)} /> Apply motion</label>
+    <p className="hint">Motion starts off. Turn it on to use the controls below.</p>
     <div className="segments" aria-label="Motion preset">
-      {['Quiet', 'Gentle', 'Full'].map((label, index) => <button key={label} aria-pressed={motion === index} onClick={() => onMotion(index)}>{label}</button>)}
+      {['Quiet', 'Gentle', 'Full'].map((label, index) => <button key={label} aria-pressed={motion === index}
+        disabled={motionDisabled} onClick={() => onMotion(index)}>{label}</button>)}
     </div>
     <RangeControl name="Speed" value={animation.cycles} min={0} max={8} defaultValue={initialAnimation.cycles}
       label={animation.cycles === 0 ? 'Still' : animation.cycles + (animation.cycles === 1 ? ' cycle per loop' : ' cycles per loop')}
-      onChange={cycles => update({ cycles })} />
-    <RangeControl name="Duration" value={duration} min={1} max={60} defaultValue={defaultDuration} label={duration + ' s'} onChange={onDuration} />
+      disabled={motionDisabled} onChange={cycles => update({ cycles })} />
+    <RangeControl name="Duration" value={duration} min={1} max={60} defaultValue={defaultDuration} label={duration + ' s'}
+      disabled={motionDisabled} onChange={onDuration} />
     <RangeControl name="Movement" value={animation.movement} min={0} max={3} step={0.01} defaultValue={initialAnimation.movement}
-      label={percent(animation.movement)} onChange={movement => update({ movement })} />
-    <details><summary>Framing and timing<ResetControl name="framing and timing" onReset={() => update({
+      label={percent(animation.movement)} disabled={motionDisabled} onChange={movement => update({ movement })} />
+    <details><summary>Framing and timing<ResetControl name="framing and timing" disabled={motionDisabled} onReset={() => update({
       scale: initialAnimation.scale, shiftX: initialAnimation.shiftX, shiftY: initialAnimation.shiftY,
       stopFps: initialAnimation.stopFps, ease: initialAnimation.ease,
     })} /></summary>
       <RangeControl name="Scale" value={animation.scale} min={0.5} max={5} step={0.01} defaultValue={initialAnimation.scale}
-        label={percent(animation.scale)} onChange={scale => update({ scale })} />
+        label={percent(animation.scale)} disabled={motionDisabled} onChange={scale => update({ scale })} />
       <RangeControl name="Horizontal shift" value={animation.shiftX} min={-0.5} max={0.5} step={0.01} defaultValue={initialAnimation.shiftX}
-        label={animation.shiftX === 0 ? 'Centered' : percent(animation.shiftX)} onChange={shiftX => update({ shiftX })} />
+        label={animation.shiftX === 0 ? 'Centered' : percent(animation.shiftX)} disabled={motionDisabled} onChange={shiftX => update({ shiftX })} />
       <RangeControl name="Vertical shift" value={animation.shiftY} min={-0.5} max={0.5} step={0.01} defaultValue={initialAnimation.shiftY}
-        label={animation.shiftY === 0 ? 'Centered' : percent(animation.shiftY)} onChange={shiftY => update({ shiftY })} />
+        label={animation.shiftY === 0 ? 'Centered' : percent(animation.shiftY)} disabled={motionDisabled} onChange={shiftY => update({ shiftY })} />
       <RangeControl name="Stop motion" value={animation.stopFps} min={0} max={24} defaultValue={initialAnimation.stopFps}
-        label={animation.stopFps === 0 ? 'Off' : animation.stopFps + ' fps'} onChange={stopFps => update({ stopFps })} />
+        label={animation.stopFps === 0 ? 'Off' : animation.stopFps + ' fps'} disabled={motionDisabled} onChange={stopFps => update({ stopFps })} />
       <RangeControl name="Eased motion" value={animation.ease} min={0} max={1} step={0.01} defaultValue={initialAnimation.ease}
-        label={percent(animation.ease)} onChange={ease => update({ ease })} />
+        label={percent(animation.ease)} disabled={motionDisabled} onChange={ease => update({ ease })} />
     </details>
+    <div className="control-motion-panel">
+      <div className="card-heading">
+        <h2>Fine tune motion</h2>
+        <ResetControl name="fine tune motion" disabled={motionDisabled} onReset={() => {
+          onLookTune({ ...lookTune, motions: lookSpec.controls.map(control => control.motion ?? 0) });
+          onFinishTune({ ...finishTune, motions: finishSpec.controls.map(control => control.motion ?? 0) });
+        }} />
+      </div>
+      <p className="hint">These sliders set how far each Look and Finish control moves while motion is on.</p>
+      <ControlMotionGroup title={'Look · ' + lookName} spec={lookSpec} value={lookTune}
+        onChange={onLookTune} disabled={motionDisabled} />
+      <ControlMotionGroup title={'Finish · ' + finishName} spec={finishSpec} value={finishTune}
+        onChange={onFinishTune} disabled={motionDisabled} />
+    </div>
   </div>;
 }

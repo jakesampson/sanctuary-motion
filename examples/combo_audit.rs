@@ -1,4 +1,4 @@
-use sanctuary_render::{Renderer, Scene, TextSettings, TuneSettings, FINISH_COUNT, LOOK_COUNT};
+use sanctuary_render::{AnimationSettings, Renderer, Scene, TextSettings, TuneSettings, FINISH_COUNT, LOOK_COUNT};
 
 const WIDTH: u32 = 160;
 const HEIGHT: u32 = 90;
@@ -22,6 +22,7 @@ fn scene(look: u32, finish: u32) -> Scene {
         },
         look_tune: auto_tune(),
         finish_tune: auto_tune(),
+        animation: AnimationSettings { enabled: true, ..AnimationSettings::default() },
         ..Scene::default()
     }
 }
