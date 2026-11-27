@@ -4,6 +4,7 @@ use std::{fs, path::Path, sync::Arc, time::Instant};
 fn main() -> Result<(), String> {
     let renderer = Renderer::new()?;
     println!("{}", renderer.adapter);
+    verify_motion(&renderer)?;
     fs::create_dir_all("artifacts").map_err(|e| e.to_string())?;
     for (width, height) in [(1920, 1080), (3840, 960)] {
         let scene = Scene {
@@ -136,5 +137,62 @@ fn main() -> Result<(), String> {
         assert_eq!(plain, target.frame(&scene, 0.0)?);
     }
     println!("PNG and JPEG overlays passed Fit, Fill and clear");
+    Ok(())
+}
+
+fn verify_motion(renderer: &Renderer) -> Result<(), String> {
+    let mut target = renderer.target(384, 216)?;
+    let moving = Scene::default();
+    let baseline = target.frame(&moving, 0.125)?;
+    let mut faster = moving.clone();
+    faster.animation.cycles = 2;
+    faster.animation.ease = 0.0;
+    let mut linear = moving.clone();
+    linear.animation.ease = 0.0;
+    let equivalent_time = 0.125 * faster.animation.cycles as f32 / linear.animation.cycles as f32;
+    assert_eq!(target.frame(&faster, 0.125)?, target.frame(&linear, equivalent_time)?);
+    faster.animation.cycles = 0;
+    assert_eq!(target.frame(&faster, 0.125)?, target.frame(&faster, 0.625)?);
+
+    for (name, change) in [
+        (
+            "movement",
+            (|scene: &mut Scene| scene.animation.movement = 0.0) as fn(&mut Scene),
+        ),
+        ("scale", |scene| scene.animation.scale = 1.5),
+        ("horizontal shift", |scene| scene.animation.shift_x = 0.2),
+        ("vertical shift", |scene| scene.animation.shift_y = 0.2),
+        ("motion preset", |scene| scene.motion = 2),
+    ] {
+        let mut adjusted = moving.clone();
+        change(&mut adjusted);
+        assert_ne!(
+            target.frame(&adjusted, 0.125)?,
+            baseline,
+            "{name} has no effect"
+        );
+        assert_eq!(
+            target.frame(&adjusted, 0.0)?,
+            target.frame(&adjusted, 1.0)?,
+            "{name} breaks the loop"
+        );
+    }
+
+    let mut held = moving.clone();
+    held.animation.stop_fps = 6;
+    let first = target.frame(&held, 0.0)?;
+    assert_eq!(first, target.frame(&held, 0.01)?);
+    held.duration = 40;
+    assert_ne!(first, target.frame(&held, 0.01)?);
+    assert_eq!(first, target.frame(&held, 1.0)?);
+
+    let mut eased = moving.clone();
+    eased.animation.ease = 1.0;
+    assert_ne!(
+        target.frame(&moving, 0.0625)?,
+        target.frame(&eased, 0.0625)?
+    );
+    assert_eq!(target.frame(&eased, 0.0)?, target.frame(&eased, 1.0)?);
+    println!("Speed, duration, movement, framing, presets, frame holds and easing passed");
     Ok(())
 }

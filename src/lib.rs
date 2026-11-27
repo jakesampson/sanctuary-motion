@@ -4,7 +4,7 @@ use std::io::Write;
 use wgpu::util::DeviceExt;
 
 pub const LOOK_COUNT: u32 = 99;
-pub const FINISH_COUNT: u32 = 47;
+pub const FINISH_COUNT: u32 = 48;
 mod overlay;
 mod text;
 mod tune;
@@ -400,6 +400,7 @@ impl Target {
             }
             self.text_key = key;
         }
+        let motion_phase = scene.animation.phase(phase, scene.duration);
         let params = Params {
             size: [self.width, self.height],
             look: scene.look,
@@ -430,7 +431,7 @@ impl Target {
                 &scene.look_tune.values,
                 &scene.look_tune.motions,
                 scene.look_tune.auto,
-                phase,
+                motion_phase,
             )),
             finish_tune: pack_finish(tune::bake(
                 tune::FINISH_TUNE,
@@ -438,10 +439,10 @@ impl Target {
                 &scene.finish_tune.values,
                 &scene.finish_tune.motions,
                 scene.finish_tune.auto,
-                phase,
+                motion_phase,
             )),
             seed: scene.seed,
-            phase: scene.animation.phase(phase, scene.duration),
+            phase: motion_phase,
             energy: [0.45, 0.75, 1.0][scene.motion as usize] * scene.animation.movement,
             intensity: scene.intensity,
             composition: scene.width as f32 / scene.height as f32,

@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { ColorField, RangeControl, ResetControl, percent, type RGB } from './controls';
+import { ColorField, CollapsibleSection, RangeControl, ResetControl, percent, type RGB } from './controls';
 
 export type TextSettings = {
   enabled: boolean; content: string; mode: number; treatment: number; font: number; uppercase: boolean;
@@ -40,7 +40,11 @@ export function TextPanel({ look, finish, Thumbnail, text, onChange, playing, on
   return <div className="step-content">
     <div className="card-heading">
       <h2>Text layer</h2>
-      <ResetControl name="text layer" onReset={() => onChange(initialText)} />
+      <ResetControl name="text layer" onReset={() => onChange({
+        ...text,
+        enabled: initialText.enabled, content: initialText.content, mode: initialText.mode,
+        font: initialText.font, uppercase: initialText.uppercase, size: initialText.size,
+      })} />
     </div>
     <div className="editor-actions">
       <button aria-pressed={text.enabled} onClick={() => update(text.enabled
@@ -82,13 +86,13 @@ export function TextPanel({ look, finish, Thumbnail, text, onChange, playing, on
     </div>
     <RangeControl name="Text size" value={text.size} min={0.25} max={3} step={0.01} defaultValue={initialText.size}
       label={percent(text.size)} onChange={size => update({ size })} />
-    <details><summary>Text appearance and timing<ResetControl name="text appearance and timing" onReset={() => update({
+    <CollapsibleSection title="Text appearance and timing" name="text appearance and timing" onReset={() => update({
       cycles: initialText.cycles, density: initialText.density, innerSize: initialText.innerSize,
       spacing: initialText.spacing, glow: initialText.glow, opacity: initialText.opacity,
       shiftX: initialText.shiftX, shiftY: initialText.shiftY, blend: initialText.blend,
       foreground: initialText.foreground, accent: initialText.accent, crt: initialText.crt,
       background: initialText.background, dim: initialText.dim,
-    })} /></summary>
+    })}>
       <RangeControl name="Text speed" value={text.cycles} min={0} max={4} defaultValue={initialText.cycles}
         label={text.cycles === 0 ? 'Still' : text.cycles + ' per loop'} onChange={cycles => update({ cycles })} />
       {text.mode === 0 && text.treatment > 0 && text.treatment < 30 && <>
@@ -112,6 +116,6 @@ export function TextPanel({ look, finish, Thumbnail, text, onChange, playing, on
         {['Loop','Black','Green'].map((name,index) => <option key={name} value={index}>{name}</option>)}
       </select></label>
       {text.background === 0 && ratio('dim','Background dim')}
-    </details>
+    </CollapsibleSection>
   </div>;
 }

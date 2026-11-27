@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { type TuneSettings, type TuneSpec } from './tune';
 
 export type RGB = [number, number, number];
@@ -98,6 +98,18 @@ export function ResetControl({ name, onReset, disabled }: {
 }) {
   return <button type="button" className="reset-control" aria-label={'Reset ' + name} title={'Reset ' + name}
     disabled={disabled} onClick={event => { event.preventDefault(); event.stopPropagation(); onReset(); }}>↺</button>;
+}
+
+export function CollapsibleSection({ title, name, onReset, children }: {
+  title: string; name: string; onReset: () => void; children: ReactNode;
+}) {
+  return <div className="collapsible-section">
+    <details>
+      <summary>{title}</summary>
+      {children}
+    </details>
+    <ResetControl name={name} onReset={onReset} />
+  </div>;
 }
 
 export function RangeControl({ name, value, min, max, step = 1, label, defaultValue, onChange }: {

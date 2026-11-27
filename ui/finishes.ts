@@ -47,4 +47,5 @@ export const finishes = [
   ["Pixel Steps","Motion"],
   ["Pixel Sort","Motion"],
   ["Block Glitch","Motion"],
+  ["Line Screen","Texture"],
 ] as const;
