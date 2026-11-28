@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::io::Write;
 use wgpu::util::DeviceExt;
 
-pub const LOOK_COUNT: u32 = 99;
+pub const LOOK_COUNT: u32 = 107;
 pub const FINISH_COUNT: u32 = 48;
 mod overlay;
 mod text;

@@ -99,6 +99,14 @@ export const catalog = [
   ["Light Columns","Light & space"],
   ["Hondius · Annunciation","Advent"],
   ["Bout · Shepherds","Advent"],
+  ["Ridge Drift","Atmosphere"],
+  ["Candle Field","Glow"],
+  ["Breathing Aperture","Shapes"],
+  ["Haze Wash","Flowing"],
+  ["Iridescent Veil","Flowing forms"],
+  ["Light Towers","Stage & LED"],
+  ["Neon Drift","Lines & grids"],
+  ["Warped Dream","Atmosphere"],
 ] as const;
 
 export const looks = catalog.map(([name]) => name);

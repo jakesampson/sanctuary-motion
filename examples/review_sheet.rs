@@ -43,7 +43,7 @@ fn main() -> Result<(), String> {
     fs::create_dir_all("artifacts/review").map_err(|error| error.to_string())?;
 
     let mut small = renderer.target(SMALL_W, SMALL_H)?;
-    let mut looks = RgbImage::new(SMALL_W * 10, SMALL_H * 10);
+    let mut looks = RgbImage::new(SMALL_W * 10, SMALL_H * ((LOOK_COUNT as u32 + 9) / 10));
     for index in 0..LOOK_COUNT {
         let scene = Scene {
             width: SMALL_W,

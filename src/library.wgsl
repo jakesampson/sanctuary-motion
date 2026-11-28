@@ -944,6 +944,131 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             let body = canvas+wash*0.45+shaft*0.55+warmth*0.2;
             return vec2f(body, shaft+bloom+t(5u)*0.3);
         }
+        case 99u: { // Ridge Drift
+            let ridges = max(2.0, round(t(0u)));
+            let haze_scale = mix(1.5, 3.6, t(1u));
+            let slide = t(2u);
+            var layers = 0.0;
+            for (var i = 0u; i < 6u; i++) {
+                if f32(i) >= ridges { break; }
+                let layer = f32(i);
+                let ridge_y = -0.32 + layer * 0.125
+                    + 0.055 * sin(p.x * (2.2 + layer * 0.6) + layer * 2.1
+                        + time * f32(1u + i) + seed * 0.1);
+                layers = max(layers,
+                    smoothstep(0.055, -0.025, p.y - ridge_y) * (1.0 - layer / ridges) * 0.62);
+            }
+            let haze = mist(p * haze_scale + vec2f(sin(time) * 0.14 * slide, 0.0) + seed);
+            let light = band(p.y + 0.16 - 0.035 * sin(time), mix(0.035, 0.15, t(1u)));
+            let body = haze * 0.34 + layers * (0.55 + 0.35 * t(1u)) + light * 0.22;
+            return vec2f(body, light * (0.35 + 0.65 * slide) + layers * 0.22);
+        }
+        case 100u: { // Candle Field
+            let candles = max(3.0, round(t(0u)));
+            let flicker = t(1u);
+            let halo = t(2u);
+            var flames = 0.0;
+            for (var i = 0u; i < 12u; i++) {
+                if f32(i) >= candles { break; }
+                let flame = f32(i);
+                let x = (flame - (candles - 1.0) * 0.5) * mix(0.09, 0.16, halo);
+                let y = -0.29 + 0.018 * sin(flame * 1.7 + seed);
+                let d = length((p - vec2f(x, y)) * vec2f(1.0, 2.4));
+                let pulse = 1.0 - flicker * 0.32 * (0.5 + 0.5 * sin(time * f32(1u + i % 3u) + flame));
+                flames += exp(-d * d / mix(0.0009, 0.0065, halo)) * pulse;
+            }
+            let stars = glitter_field(p + vec2f(0.0, 0.28), 11.0, 0.18, flicker, time, seed + 31.0);
+            let glow = mist(p * 2.6 + seed) * 0.16;
+            return vec2f(flames * 0.6 + stars.x * 0.35 + glow,
+                flames * 0.75 + stars.y * 0.5);
+        }
+        case 101u: { // Breathing Aperture
+            let rings = max(2.0, round(t(0u)));
+            let breath = 0.5 + 0.5 * sin(time);
+            var aperture = 0.0;
+            for (var i = 0u; i < 8u; i++) {
+                if f32(i) >= rings { break; }
+                let ring = f32(i);
+                let radius = 0.09 + ring * mix(0.05, 0.11, t(1u)) + breath * 0.035;
+                let d = abs(length(p * vec2f(1.0, 1.08)) - radius);
+                aperture += band(d, mix(0.008, 0.05, t(2u))) * (1.0 - ring / rings * 0.5);
+            }
+            let centre = exp(-length(p) * mix(3.0, 9.0, t(2u)));
+            return vec2f(aperture * 0.62 + centre * 0.22,
+                aperture * 0.82 + centre * 0.18);
+        }
+        case 102u: { // Haze Wash
+            let wash = mist((p + vec2f(sin(time) * 0.16 * t(1u), cos(time) * 0.03))
+                * mix(0.8, 2.4, t(0u)) + seed);
+            let lower = smoothstep(-0.10, 0.22, p.y);
+            let bands = (0.5 + 0.5 * sin(p.y * mix(3.0, 9.0, t(0u))
+                + wash * 2.0 + sin(time))) * mix(0.35, 1.0, lower);
+            let light = band(p.y - 0.30 + 0.05 * sin(time * 2.0), mix(0.06, 0.24, t(2u)));
+            return vec2f(wash * 0.38 + bands * (0.10 + 0.18 * t(2u)) + light * 0.22,
+                light * (0.3 + 0.7 * t(2u)) + bands * 0.10);
+        }
+        case 103u: { // Iridescent Veil
+            let veils = max(2.0, round(t(0u)));
+            let v = rotate2(p, 28.0) + vec2f(sin(time) * 0.07 * t(2u), cos(time) * 0.05 * t(2u));
+            var sheets = 0.0;
+            for (var i = 0u; i < 6u; i++) {
+                if f32(i) >= veils { break; }
+                let sheet = f32(i);
+                let offset = sheet * 0.09 - 0.18;
+                let streak = band(v.x - offset + 0.12 * sin(v.y * 2.0 + time + sheet),
+                    mix(0.02, 0.1, t(1u)));
+                sheets += streak * (0.6 - 0.075 * sheet);
+            }
+            let lower = mix(0.05, 1.0, smoothstep(0.06, 0.34, p.y));
+            sheets = sheets * lower;
+            let shimmer = pow(0.5 + 0.5 * cos(v.x * mix(6.0, 16.0, t(1u)) + time * 2.0), 3.0) * t(1u) * lower;
+            return vec2f(sheets * 0.58 + shimmer * 0.18,
+                sheets * (0.2 + 0.4 * shimmer));
+        }
+        case 104u: { // Light Towers
+            let towers = max(3.0, round(t(0u)));
+            let spacing = mix(0.12, 0.22, t(1u));
+            let width = mix(0.022, 0.075, t(1u));
+            var columns = 0.0;
+            for (var i = 0u; i < 10u; i++) {
+                if f32(i) >= towers { break; }
+                let tower = f32(i);
+                let x = (tower - (towers - 1.0) * 0.5) * spacing;
+                let wave = pow(0.5 + 0.5 * sin(p.y * mix(4.0, 12.0, t(2u))
+                    - time * 2.0 + tower * 0.7), mix(1.5, 5.0, t(2u)));
+                columns += band(p.x - x, width) * (0.35 + 0.65 * wave);
+            }
+            columns = columns * mix(0.18, 1.0, smoothstep(-0.12, 0.24, p.y));
+            let haze = mist(p * 3.0 + vec2f(0.0, sin(time) * 0.1) + seed) * 0.2;
+            return vec2f(columns * 0.68 + haze, columns * columns * 0.3 + haze * 0.4);
+        }
+        case 105u: { // Neon Drift
+            let lines = max(3.0, round(t(0u)));
+            let spread = mix(0.06, 0.13, t(1u));
+            let v = rotate2(p, -32.0)
+                + vec2f(sin(time) * 0.05 * t(1u), cos(time) * 0.04 * t(1u));
+            var beams = 0.0;
+            for (var i = 0u; i < 12u; i++) {
+                if f32(i) >= lines { break; }
+                let line = f32(i);
+                let offset = (line - (lines - 1.0) * 0.5) * spread;
+                beams += band(v.x - offset, mix(0.006, 0.024, t(2u)));
+            }
+            beams = beams * mix(0.01, 1.0, smoothstep(0.22, 0.46, p.y));
+            let pulse = 0.75 + 0.25 * sin(time * 2.0 + seed);
+            return vec2f(beams * 0.55 * pulse, beams * pulse * (0.2 + 0.8 * t(2u)));
+        }
+        case 106u: { // Warped Dream
+            let warp = t(0u);
+            let density = mix(10.0, 34.0, t(1u));
+            let sharpness = mix(3.0, 10.0, t(2u));
+            let y = p.y + 0.075 * sin(p.x * (2.0 + warp * 3.0) + time)
+                + 0.04 * sin(p.x * 7.0 - time * 2.0) * warp;
+            let streaks = pow(0.5 + 0.5 * sin(y * density + mist(p * 2.0 + seed) * 2.0), sharpness);
+            let centre = band(p.y - 0.02 * sin(time), 0.12);
+            return vec2f(streaks * 0.5 + mist(p * 2.5 + seed) * 0.18,
+                streaks * centre * (0.25 + 0.75 * t(2u)));
+        }
         default: { return vec2f(0); }
     }
 }
