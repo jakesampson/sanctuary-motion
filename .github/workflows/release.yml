@@ -52,11 +52,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: Sanctuary Motion v1.0.1
+          releaseName: Sanctuary Motion v1.1.0
           releaseBody: |
-            Sanctuary Motion 1.0.1 — an offline desktop studio for seamless worship backgrounds.
+            Sanctuary Motion 1.1.0 — an offline desktop studio for seamless worship backgrounds.
 
-            This patch makes motion opt-in, moves all fine-tune motion controls to the Motion page, adds Reset all, and gives every text effect one shared font size with a legible Letter Rain treatment.
+            This release adds 20 clean, smooth lyric-safe looks inspired by Motion Worship collections: layered ridges, candlelight, breathing apertures, haze, veils, towers, neon, dreamscape, smoke, aurora, bokeh, canyon rays, planets, treelights, clouds, ripples, deep flow, autumn leaves, and wheat fields. Motion stays opt-in, fine-tune controls live on the Motion page, Reset all restores a fresh scene, and every text effect shares one glyph size.
 
             **Downloads**
             - Windows 11 (x64 NSIS installer)
@@ -64,7 +64,7 @@ jobs:
             - macOS 11+ Apple Silicon (.app)
 
             No account or internet connection is needed to use the app. macOS builds are ad-hoc signed and not notarized; right-click and choose Open if Gatekeeper warns. Windows needs WebView2, which the installer can provide.
-          releaseDraft: false
+          releaseDraft: true
           prerelease: false
           args: --verbose --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
           retryAttempts: 3

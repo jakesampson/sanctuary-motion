@@ -3375,7 +3375,7 @@ dependencies = [
 
 [[package]]
 name = "sanctuary-motion"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "sanctuary-render",
  "serde",
@@ -3388,7 +3388,7 @@ dependencies = [
 
 [[package]]
 name = "sanctuary-render"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "bytemuck",
  "cosmic-text",
