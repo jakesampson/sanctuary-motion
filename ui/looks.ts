@@ -107,6 +107,18 @@ export const catalog = [
   ["Light Towers","Stage & LED"],
   ["Neon Drift","Lines & grids"],
   ["Warped Dream","Atmosphere"],
+  ["Violet Shine","Glow"],
+  ["Amethyst Smoke","Atmosphere"],
+  ["Mint Aurora","Atmosphere"],
+  ["Glow Night","Glow"],
+  ["Canyon Rays","Beams"],
+  ["Planet Limb","Worlds"],
+  ["Treelight","Light & space"],
+  ["Cloud Bank","Atmosphere"],
+  ["Blue Ripple","Shapes"],
+  ["Deep Flow","Flowing forms"],
+  ["Glowing Leaves","Glow"],
+  ["Golden Wheat","Worlds"],
 ] as const;
 
 export const looks = catalog.map(([name]) => name);

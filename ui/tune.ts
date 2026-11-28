@@ -115,7 +115,19 @@ export const lookTune: TuneSpec[] = [
 {auto:true,controls:[{label:'Veils',min:2.0,max:6.0,step:1.0,value:4.0, motion: 0},{label:'Sheen',min:0.0,max:1.0,step:0.01,value:0.55, motion: 0.5},{label:'Flow',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
 {auto:true,controls:[{label:'Towers',min:3.0,max:10.0,step:1.0,value:6.0, motion: 0},{label:'Shimmer',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Wave',min:0.0,max:1.0,step:0.01,value:0.55, motion: 0.5}]},
 {auto:true,controls:[{label:'Lines',min:3.0,max:12.0,step:1.0,value:7.0, motion: 0},{label:'Spread',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Pulse',min:0.0,max:1.0,step:0.01,value:0.55, motion: 0.5}]},
-{auto:true,controls:[{label:'Warp',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Streaks',min:0.0,max:1.0,step:0.01,value:0.55, motion: 0.5},{label:'Bloom',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]}
+{auto:true,controls:[{label:'Warp',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Streaks',min:0.0,max:1.0,step:0.01,value:0.55, motion: 0.5},{label:'Bloom',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Wash',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Curl',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Width',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Ribbons',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Warp',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Softness',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Bands',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Drift',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Softness',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Orbs',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Drift',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Size',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Rays',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Spread',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Sharpness',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Curve',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Atmosphere',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Edge',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Trees',min:3.0,max:12.0,step:1.0,value:7.0, motion: 0},{label:'Sway',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Glow',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Scale',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Drift',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Softness',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Rings',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Speed',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Sharpness',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Ribbons',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Flow',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Softness',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Density',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Drift',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Size',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]},
+{auto:true,controls:[{label:'Stalks',min:6.0,max:18.0,step:1.0,value:12.0, motion: 0},{label:'Spread',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5},{label:'Sway',min:0.0,max:1.0,step:0.01,value:0.5, motion: 0.5}]}
 ];
 export const finishTune: TuneSpec[] = [
 {auto:false,controls:[]},

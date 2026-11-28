@@ -1069,6 +1069,125 @@ fn library_look(look: u32, uv: vec2f, time: f32, drift: vec2f, seed: f32) -> vec
             return vec2f(streaks * 0.5 + mist(p * 2.5 + seed) * 0.18,
                 streaks * centre * (0.25 + 0.75 * t(2u)));
         }
+        case 107u: { // Violet Arc
+            let curl = 0.30 + 0.06 * sin(p.x * 2.4 + time) * t(1u);
+            let arc = band(p.y - curl, mix(0.02, 0.14, t(2u)))
+                * smoothstep(-0.42, -0.02, p.y);
+            let wash = mist(p * mix(1.4, 3.2, t(0u)) + vec2f(sin(time) * 0.08, 0.0) + seed);
+            let pulse = 0.78 + 0.22 * sin(time * 2.0 + seed);
+            return vec2f(wash * 0.32 + arc * 0.55 * pulse, arc * 0.72 * pulse + wash * 0.12);
+        }
+        case 108u: { // Amethyst Smoke
+            let v = rotate2(p, 18.0) + vec2f(sin(time) * 0.10 * t(1u), cos(time) * 0.06 * t(1u));
+            let smoke = pow(0.5 + 0.5 * sin(v.x * mix(2.5, 7.0, t(0u))
+                + sin(v.y * mix(3.0, 8.0, t(1u)) + time) * mix(0.6, 2.2, t(2u))), 3.0);
+            let lower = smoothstep(-0.02, 0.34, p.y);
+            return vec2f(smoke * lower * 0.55 + mist(v * 2.0 + seed) * 0.20,
+                smoke * lower * 0.58);
+        }
+        case 109u: { // Mint Aurora
+            let v = p + vec2f(sin(time) * 0.12 * t(1u), 0.0);
+            let curtain = pow(0.5 + 0.5 * sin(v.x * mix(3.0, 10.0, t(0u))
+                + sin(v.y * 4.0 + time) * 1.2), mix(3.0, 10.0, t(2u)));
+            let light = exp(-abs(v.y - 0.26) / mix(0.04, 0.18, t(2u)));
+            let lower = smoothstep(0.02, 0.32, p.y);
+            return vec2f(curtain * light * lower * 0.62 + mist(v * 2.2 + seed) * 0.18,
+                curtain * light * lower * 0.72);
+        }
+        case 110u: { // Glow Night
+            let v = p * mix(0.6, 1.6, t(0u))
+                + vec2f(0.0, sin(time) * 0.08 * t(1u));
+            let lights = drifting_lights(v, time, seed, false) * mix(0.5, 1.0, t(2u));
+            let lower = smoothstep(0.06, 0.38, p.y);
+            return vec2f(lights * lower * 0.42 + mist(v * 2.4 + seed) * 0.22,
+                lights * lower * 0.55);
+        }
+        case 111u: { // Canyon Rays
+            let side = smoothstep(0.16, 0.42, abs(p.x));
+            let origin = vec2f(sign(p.x) * mix(0.20, 0.34, t(1u)), 0.30);
+            let rays = radial_rays(p - origin, mix(2.0, 10.0, t(0u)), 0.35, t(2u), seed, drift);
+            let lower = smoothstep(0.02, 0.34, p.y);
+            let shafts = rays.y * side * lower * mix(0.4, 1.0, t(0u));
+            return vec2f(shafts * 0.62 + mist(p * 2.6 + seed) * 0.20, shafts * 0.75);
+        }
+        case 112u: { // Planet Limb
+            let curve = p.y - 0.44 + t(0u) * 0.12 * p.x * p.x + 0.02 * sin(time);
+            let limb = band(curve, mix(0.008, 0.05, t(2u)));
+            let atmosphere = exp(-abs(curve) / mix(0.05, 0.18, t(1u)));
+            let body = smoothstep(0.02, -0.10, curve) * 0.45;
+            let bands = pow(0.5 + 0.5 * sin(p.x * mix(5.0, 14.0, t(0u))
+                + curve * 8.0 + time), 4.0) * atmosphere;
+            return vec2f(body + atmosphere * 0.28 + bands * 0.16, limb * 0.85 + bands * 0.25);
+        }
+        case 113u: { // Treelight
+            let trees = max(3.0, round(t(0u)));
+            var trunks = 0.0;
+            for (var i = 0u; i < 12u; i++) {
+                if f32(i) >= trees { break; }
+                let tree = f32(i);
+                let x = (tree - (trees - 1.0) * 0.5) * 0.11;
+                let sway = sin(time * 0.8 + tree * 0.7) * 0.025 * t(1u) * (p.y + 0.2);
+                trunks += band(p.x - x - sway, 0.014) * smoothstep(0.08, 0.36, p.y);
+            }
+            let lower = smoothstep(0.06, 0.36, p.y);
+            let lights = glitter_field(p + vec2f(sin(time) * 0.04 * t(1u), 0.0),
+                14.0, t(2u), 0.2, time, seed).y;
+            return vec2f(trunks * 0.35 + lights * lower * 0.35,
+                lights * lower * 0.5 + trunks * 0.12);
+        }
+        case 114u: { // Cloud Bank
+            let v = p * mix(1.8, 4.2, t(0u))
+                + vec2f(sin(time) * 0.12 * t(1u), cos(time) * 0.05 * t(1u));
+            let billow = smoothstep(0.38, 0.76, mist(v + vec2f(0.0, 1.7) + seed));
+            let bank = billow * smoothstep(0.04, 0.34, p.y);
+            let edge = band(v.y - 2.2, mix(0.12, 0.4, t(2u))) * bank;
+            return vec2f(bank * 0.55 + edge * 0.18, edge * 0.42 + bank * 0.16);
+        }
+        case 115u: { // Blue Ripple
+            let c = vec2f(0.0, 0.36);
+            let d = length((p - c) * vec2f(1.6, 1.0));
+            let ripple = pow(0.5 + 0.5 * sin(d * mix(12.0, 34.0, t(0u))
+                - time * mix(1.0, 3.0, t(1u))), mix(3.0, 10.0, t(2u)));
+            let fade = exp(-d * mix(1.4, 3.2, t(2u)));
+            let lower = smoothstep(0.02, 0.32, p.y);
+            return vec2f(ripple * fade * lower * 0.62 + mist(p * 2.4 + seed) * 0.14,
+                ripple * fade * lower * 0.78);
+        }
+        case 116u: { // Deep Flow
+            let v = rotate2(p, 12.0) + vec2f(sin(time) * 0.12 * t(1u), cos(time) * 0.04 * t(1u));
+            var ribbons = 0.0;
+            for (var i = 0u; i < 4u; i++) {
+                let ribbon = f32(i);
+                let offset = (ribbon - 1.5) * 0.14;
+                let wave = v.y + 0.16 * sin(v.x * mix(3.0, 8.0, t(0u)) + time * 0.8 + ribbon * 1.1);
+                ribbons += band(wave - offset, mix(0.02, 0.10, t(2u))) * (0.7 - 0.1 * ribbon);
+            }
+            let lower = smoothstep(0.04, 0.34, p.y);
+            return vec2f(ribbons * lower * 0.55 + mist(v * 2.2 + seed) * 0.18,
+                ribbons * lower * 0.65);
+        }
+        case 117u: { // Glowing Leaves
+            let drift_leaves = vec2f(sin(time) * 0.14 * t(1u), cos(time) * 0.05 * t(1u));
+            let leaves = glitter_field(p + drift_leaves + vec2f(0.0, 0.24),
+                t(0u) * 24.0, t(2u), 0.35, time, seed + 17.0);
+            let lower = smoothstep(0.06, 0.36, p.y);
+            return vec2f(leaves.x * lower * 0.42 + mist(p * 2.6 + seed) * 0.20,
+                leaves.y * lower * 0.60);
+        }
+        case 118u: { // Golden Wheat
+            let stalks = max(6.0, round(t(0u)));
+            var wheat = 0.0;
+            for (var i = 0u; i < 18u; i++) {
+                if f32(i) >= stalks { break; }
+                let stalk = f32(i);
+                let x = (stalk - (stalks - 1.0) * 0.5) * mix(0.05, 0.11, t(1u));
+                let sway = sin(time * 0.7 + stalk * 0.9) * 0.028 * t(2u) * (p.y + 0.15);
+                wheat += band(p.x - x - sway, mix(0.004, 0.014, t(2u)))
+                    * smoothstep(0.10, 0.36, p.y);
+            }
+            let haze = mist(p * 2.0 + seed) * 0.18;
+            return vec2f(wheat * 0.5 + haze, wheat * 0.45 + haze * 0.3);
+        }
         default: { return vec2f(0); }
     }
 }

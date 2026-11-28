@@ -27,8 +27,8 @@ fn main() -> Result<(), String> {
     fs::create_dir_all("artifacts/review").map_err(|error| error.to_string())?;
     let mut target = renderer.target(W, H)?;
     for (label, size) in [("sm", 0.58f32), ("lg", 1.0f32)] {
-        let mut sheet = RgbImage::new(W * 4, H * 2);
-        for slot in 0..8usize {
+        let mut sheet = RgbImage::new(W * 5, H * 4);
+        for slot in 0..20usize {
             let scene = Scene {
                 width: W,
                 height: H,
@@ -46,7 +46,7 @@ fn main() -> Result<(), String> {
                 ..Scene::default()
             };
             let frame = target.frame(&scene, 0.23)?;
-            paste(&mut sheet, &frame, (slot % 4) as u32 * W, (slot / 4) as u32 * H);
+            paste(&mut sheet, &frame, (slot % 5) as u32 * W, (slot / 5) as u32 * H);
         }
         write_rgb(&format!("artifacts/review/new-looks-{label}.png"), &sheet)?;
     }
